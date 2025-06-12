@@ -51,6 +51,9 @@ def get_screenshot_and_html_content_using_playwright(url: str) -> tuple[str, lis
     Get the screenshot and HTML content of a webpage using Playwright. Then, generate the HTML as a clone, and save it to the file system. 
     """
     trimmed_html_content, image_sources = asyncio.run(capture_page_and_img_src(url, "assets/screenshot-of-page-to-clone.png"))
+    
+    if not trimmed_html_content:
+        return "Screenshot functionality is not available. Please install Playwright to enable this feature."
 
     llm = ChatOpenAI(model="o3")
 

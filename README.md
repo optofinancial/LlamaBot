@@ -145,7 +145,10 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO langgraph_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO langgraph_user;
 "
 
-# 6 — Navigate to backend and run it
+# 6 - (Optional): if you want to use Playwright in your workflows:, npm install playwright
+npm init playwright@latest
+
+# 7 — Navigate to backend and run it
 cd backend
 uvicorn app:app --reload
 ```

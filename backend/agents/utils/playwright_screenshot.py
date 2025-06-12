@@ -1,28 +1,41 @@
-from playwright.async_api import async_playwright
+try:
+    from playwright.async_api import async_playwright
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
 from bs4 import BeautifulSoup
 import re
 import asyncio
 
 async def capture_page_and_img_src(url: str, image_path: str) -> tuple[str, list[str]]:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-
-        await page.goto(url)
-        await page.screenshot(path=image_path, full_page=True)
-        print(f"Screenshot saved to {image_path}")
-
-        html = await page.content()
+    if not PLAYWRIGHT_AVAILABLE:
+        print("Warning: Playwright is not installed. Screenshot functionality is disabled.")
+        print("To enable screenshots, install playwright: pip install playwright && playwright install")
+        return "", []
         
-        image_sources = await page.query_selector_all('img')
-        image_sources = [await img.get_attribute('src') for img in image_sources]
-        print(f"Image sources: {image_sources}")
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
 
-        await browser.close()
+            await page.goto(url)
+            await page.screenshot(path=image_path, full_page=True)
+            print(f"Screenshot saved to {image_path}")
 
-        trimmed_html = trim_html_for_llm(html)
+            html = await page.content()
+            
+            image_sources = await page.query_selector_all('img')
+            image_sources = [await img.get_attribute('src') for img in image_sources]
+            print(f"Image sources: {image_sources}")
 
-        return trimmed_html, image_sources
+            await browser.close()
+
+            trimmed_html = trim_html_for_llm(html)
+
+            return trimmed_html, image_sources
+    except Exception as e:
+        print(f"Error capturing screenshot: {str(e)}")
+        return "", []
     
 def trim_html_for_llm(html: str) -> str:
     soup = BeautifulSoup(html, 'html.parser')
