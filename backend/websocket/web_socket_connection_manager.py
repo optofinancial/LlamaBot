@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 
 logger = logging.getLogger(__name__)
 
-class ConnectionManager:
+class WebSocketConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
         self.active_tasks: set = set()
@@ -25,7 +25,7 @@ class ConnectionManager:
                 self.active_connections.append(websocket)
                 logger.info(f"New connection added. Total connections: {len(self.active_connections)}")
         except Exception as e: 
-            logging.info(f"Connect Exception in ConnectionManager: {e}")
+            logging.info(f"Connect Exception in WebSocketConnectionManager: {e}")
 
     def disconnect(self, websocket: WebSocket):
         try:
@@ -35,7 +35,7 @@ class ConnectionManager:
                 self.active_connections.remove(websocket)
                 logger.info(f"Connection removed. Total connections: {len(self.active_connections)}")
         except Exception as e: 
-            logging.info(f"Disconnect Exception in ConnectionManager: {e}")
+            logging.info(f"Disconnect Exception in WebSocketConnectionManager: {e}")
 
     async def send_personal_message(self, message: Union[str, dict], websocket: WebSocket):
         if isinstance(message, dict):

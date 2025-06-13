@@ -7,13 +7,13 @@ import time
 import json
 
 from agents.llamapress_legacy.state import LlamaPressMessage
-from websocket.connection_manager import ConnectionManager
+from websocket.web_socket_connection_manager import WebSocketConnectionManager
 from websocket.request_handler import RequestHandler
 
 logger = logging.getLogger(__name__)
 
-class WebsocketHandler:
-    def __init__(self, websocket: WebSocket, manager: ConnectionManager):
+class WebSocketHandler:
+    def __init__(self, websocket: WebSocket, manager: WebSocketConnectionManager):
         self.websocket = websocket
         self.manager = manager
         self.request_handler = RequestHandler()

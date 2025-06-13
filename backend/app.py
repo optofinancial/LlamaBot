@@ -23,8 +23,8 @@ import json
 
 from datetime import datetime
 from agents.react_agent.nodes import build_workflow
-from websocket.connection_manager import ConnectionManager
-from websocket.websocket_handler import WebsocketHandler
+from websocket.web_socket_connection_manager import WebSocketConnectionManager
+from websocket.web_socket_handler import WebSocketHandler
 
 # Configure logging
 logging.basicConfig(
@@ -61,7 +61,8 @@ llm = ChatOpenAI(
 
 client = Client(api_key=os.getenv("LANGSMITH_API_KEY"))
 
-manager = ConnectionManager() 
+# This is responsible for holding and managing all active websocket connections.
+manager = WebSocketConnectionManager() 
 
 # Pydantic model for chat request
 class ChatMessage(BaseModel):
@@ -209,7 +210,7 @@ async def chat_message(chat_message: ChatMessage):
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await WebsocketHandler(websocket, manager).handle_websocket()
+    await WebSocketHandler(websocket, manager).handle_websocket()
 
 @app.get("/chat", response_class=HTMLResponse)
 async def chat():
