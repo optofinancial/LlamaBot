@@ -16,7 +16,7 @@ class WebSocketHandler:
     def __init__(self, websocket: WebSocket, manager: WebSocketConnectionManager):
         self.websocket = websocket
         self.manager = manager
-        self.request_handler = RequestHandler()
+        self.request_handler = RequestHandler(manager.app)
 
     async def handle_websocket(self):
         logger.info(f"New WebSocket connection attempt from {self.websocket.client}")

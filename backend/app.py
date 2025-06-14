@@ -62,7 +62,7 @@ llm = ChatOpenAI(
 client = Client(api_key=os.getenv("LANGSMITH_API_KEY"))
 
 # This is responsible for holding and managing all active websocket connections.
-manager = WebSocketConnectionManager() 
+manager = WebSocketConnectionManager(app) 
 
 # Pydantic model for chat request
 class ChatMessage(BaseModel):

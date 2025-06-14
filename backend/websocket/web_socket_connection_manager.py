@@ -11,7 +11,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class WebSocketConnectionManager:
-    def __init__(self):
+    def __init__(self, app: FastAPI):
+        self.app = app
         self.active_connections: list[WebSocket] = []
         self.active_tasks: set = set()
         self._connection_ids: set = set()  # Track unique connections
