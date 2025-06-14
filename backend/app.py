@@ -72,6 +72,7 @@ class ChatMessage(BaseModel):
 
 # Application state to hold persistent checkpointer, important for session-based persistence.
 app.state.checkpointer = None
+app.state.async_checkpointer = None
 
 def get_or_create_checkpointer():
     """Get persistent checkpointer, creating once if needed"""

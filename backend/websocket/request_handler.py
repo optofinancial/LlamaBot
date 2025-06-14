@@ -39,57 +39,18 @@ class RequestHandler:
 
     async def handle_request(self, message: dict, websocket: WebSocket):
         """Handle incoming WebSocket requests with proper locking and cancellation"""
-        # breakpoint()
-
-        if not message:
-            logger.error("Received null message in handle_request")
-            await websocket.send_json({
-                "type": "error",
-                "content": "Invalid message received"
-            })
-            return
-        
+        ws_id = id(websocket)
         lock = self._get_lock(websocket)
         
         async with lock:
             try:
-
-                ### The following section allows LlamaPress Users to use other Agents Defined in our langgraph.json file, as configured
-                ### In their Site Settings.
-
-                # langgraph_checkpointer = get_or_create_checkpointer()
                 app, state = self.get_langgraph_app_and_state(message)
-                # breakpoint()
-
-                #########################################################################################
-                #########################################################################################
-
-                ## LEGACY CONFIG:
-                # # # Define the config dictionary
-                # config = {
-                #     "configurable": {
-                #         "thread_id": f"{message.web_page_id}", #lol, this is laughably bad. It must be something reliable and unique, that we can save specific to the page.
-                #         "page_id": message.web_page_id,
-                #         "page_url": f"https://llamapress.ai/pages/{message.web_page_id}",
-                #     },
-                #     "context": context,
-                # }
-
-                # breakpoint()
                 config = {
                     "configurable": {
                         "thread_id": f"{message.get('thread_id')}"
                     }
                 }
-
-                # #If we are using our v1 workflow, the nodes send messages through the websocket in a format and way that LlamaPress can understand.
-                # if use_saas_workflow:
-                #     async for output in app.astream(state, config=config):
-                #         logger.info(f"Workflow output: {output}")
-                # #########################################################################################
-                # #########################################################################################
-
-                # else: # This is our LlamaBot v2 workflow, which relies on langgraph streaming to send messages through the websocket. We do not use the websocket directly in LangGraph nodes in this version.
+                
                 async for chunk in app.astream(state, config=config, stream_mode=["updates", "messages"]):
                     is_this_chunk_an_llm_message = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'messages'
                     is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'updates'
@@ -121,7 +82,7 @@ class RequestHandler:
                         logger.info(f"LangGraph Output (State Update): {chunk}")
 
                         # chunk will look like this:
-                        # {'llamabot': {'messages': [AIMessage(content='Hello! I hear you loud and clear. I’m LlamaBot, your full-stack Rails developer assistant. How can I help you today?', additional_kwargs={}, response_metadata={'finish_reason': 'stop', 'model_name': 'o4-mini-2025-04-16', 'service_tier': 'default'}, id='run--ce385bc4-fecb-4127-81d2-1da5814874f8')]}}
+                        # {'llamabot': {'messages': [AIMessage(content='Hello! I hear you loud and clear. I'm LlamaBot, your full-stack Rails developer assistant. How can I help you today?', additional_kwargs={}, response_metadata={'finish_reason': 'stop', 'model_name': 'o4-mini-2025-04-16', 'service_tier': 'default'}, id='run--ce385bc4-fecb-4127-81d2-1da5814874f8')]}}
 
                     else:
                         logger.info(f"Workflow output: {chunk}")
@@ -150,25 +111,25 @@ class RequestHandler:
 
     def get_or_create_checkpointer(self):
         """Get persistent checkpointer, creating once if needed"""
-        # breakpoint()
-        if self.app.state.checkpointer is not None:
-            return self.app.state.checkpointer
+
+        if self.app.state.async_checkpointer is not None:
+            return self.app.state.async_checkpointer
         
-        db_uri = os.getenv("DB_URI")
-        self.app.state.checkpointer = MemorySaver() # save in RAM if postgres is not available
+        db_uri = os.getenv("POSTGRES_URI_CUSTOM")
+        self.app.state.async_checkpointer = MemorySaver() # save in RAM if postgres is not available
         if db_uri:
             try:
                 # Create connection pool and PostgresSaver directly
                 pool = AsyncConnectionPool(db_uri)
-                self.app.state.checkpointer = AsyncPostgresSaver(pool)
-                self.app.state.checkpointer.setup()
+                self.app.state.async_checkpointer = AsyncPostgresSaver(pool)
+                self.app.state.async_checkpointer.setup()  # Make this async
                 logger.info("✅✅✅ Using PostgreSQL persistence!")
             except Exception as e:
                 logger.warning(f"Failed to connect to PostgreSQL: {e}. Using MemorySaver.")
         else:
             logger.info("❌❌❌ No DB_URI found. Using MemorySaver for session-based persistence.")
         
-        return self.app.state.checkpointer
+        return self.app.state.async_checkpointer
 
     def cleanup_connection(self, websocket: WebSocket):
         """Clean up resources when a connection is closed"""
@@ -182,24 +143,16 @@ class RequestHandler:
         return langgraph_workflow
     
     def get_langgraph_app_and_state(self, message: dict):
-        # Initialize LangGraph & the state
-        # if message is None:
-        #     return await build_workflow_saas(context), None, True #default to using the SaaS workflow.
-
         app = None
-        state = None #this would map to the corresponding AgentState object. So this needs to mirror what is in the client state config.
-
+        state = None
         
-        # Initialize LangGraph & the state
-        if message.get("agent_name") is not None: # This is so that we can configure different agents & workflows in our Rails app.
-            # First, Map from langgraph.json to the correct workflow
+        if message.get("agent_name") is not None:
             langgraph_workflow = self.get_workflow_from_langgraph_json(message)
             if langgraph_workflow is not None:
                 app = self.get_app_from_workflow_string(langgraph_workflow)
                 state = {
                     "messages": [HumanMessage(content=message.get("user_message"))]
                 }
-
             else:
                 raise ValueError(f"Unknown workflow: {message.get('agent_name')}")
         
