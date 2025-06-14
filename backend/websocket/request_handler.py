@@ -115,7 +115,7 @@ class RequestHandler:
         if self.app.state.async_checkpointer is not None:
             return self.app.state.async_checkpointer
         
-        db_uri = os.getenv("POSTGRES_URI_CUSTOM")
+        db_uri = os.getenv("DB_URI")
         self.app.state.async_checkpointer = MemorySaver() # save in RAM if postgres is not available
         if db_uri:
             try:
