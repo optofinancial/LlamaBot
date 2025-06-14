@@ -23,7 +23,7 @@ def run_rails_console_command(rails_console_command: str) -> str:
     
     # Configuration
     RAILS_SERVER_URL = "http://localhost:3000"
-    API_ENDPOINT = f"{RAILS_SERVER_URL}/llamabot/agents/command"
+    API_ENDPOINT = f"{RAILS_SERVER_URL}/llama_bot/agent/command"
     
     try:
         # Make HTTP request to Rails AP
@@ -47,7 +47,6 @@ def run_rails_console_command(rails_console_command: str) -> str:
                 formatted_result = str(result)
             
             return f"Command: {rails_console_command}\nType: {result_type}\nResult:\n{formatted_result}"
-            
         elif response.status_code == 403:
             error_data = response.json()
             return f"Error: {error_data.get('error', 'Command not allowed')}"
