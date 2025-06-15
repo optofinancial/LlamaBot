@@ -1,23 +1,30 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage
+from langsmith import Client
+
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.base import CheckpointTuple
+from langgraph.checkpoint.postgres import PostgresSaver
+from psycopg_pool import ConnectionPool
+
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
 import os
 import logging
 import time
 import json
+
 from datetime import datetime
 from agents.react_agent.nodes import build_workflow
-from langgraph.checkpoint.postgres import PostgresSaver
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.checkpoint.base import CheckpointTuple
-from psycopg_pool import ConnectionPool
-
-from langsmith import Client
+from websocket.web_socket_connection_manager import WebSocketConnectionManager
+from websocket.web_socket_handler import WebSocketHandler
 
 # Configure logging
 logging.basicConfig(
@@ -54,6 +61,9 @@ llm = ChatOpenAI(
 
 client = Client(api_key=os.getenv("LANGSMITH_API_KEY"))
 
+# This is responsible for holding and managing all active websocket connections.
+manager = WebSocketConnectionManager(app) 
+
 # Pydantic model for chat request
 class ChatMessage(BaseModel):
     message: str
@@ -62,6 +72,7 @@ class ChatMessage(BaseModel):
 
 # Application state to hold persistent checkpointer, important for session-based persistence.
 app.state.checkpointer = None
+app.state.async_checkpointer = None
 
 def get_or_create_checkpointer():
     """Get persistent checkpointer, creating once if needed"""
@@ -103,6 +114,9 @@ async def chat_message(chat_message: ChatMessage):
 
     # Define a generator function to stream the response
     async def response_generator():
+        # Track the final state to serialize at the end
+        final_state = None
+        
         try:
             logger.info(f"[{request_id}] Starting streaming response")
 
@@ -126,9 +140,6 @@ async def chat_message(chat_message: ChatMessage):
                 config={"configurable": {"thread_id": thread_id}},
                 stream_mode=["updates", "messages"] # "values" is the third option ( to return the entire state object )
             ) 
-
-            # Track the final state to serialize at the end
-            final_state = None
 
             # Stream each chunk
             for chunk in stream:
@@ -197,6 +208,10 @@ async def chat_message(chat_message: ChatMessage):
         response_generator(),
         media_type="text/event-stream"
     )
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await WebSocketHandler(websocket, manager).handle_websocket()
 
 @app.get("/chat", response_class=HTMLResponse)
 async def chat():
