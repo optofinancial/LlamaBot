@@ -20,9 +20,12 @@ class LlamaBotState(MessagesState):
 
 # Tools
 @tool
-def run_rails_console_command(rails_console_command: str, state: Annotated[LlamaBotState, InjectedState]) -> str:
+def run_rails_console_command(rails_console_command: str, message_to_user: str, internal_thoughts: str, state: Annotated[LlamaBotState, InjectedState]) -> str:
     """
     Run a Rails console command.
+    Message to user is a string to tell the user what you're doing.
+    Internal thoughts are your thoughts about the command.
+    State is the state of the agent.
     """
     print ("API TOKEN", state.get("api_token")) # empty. only messages is getting passed through.
     
