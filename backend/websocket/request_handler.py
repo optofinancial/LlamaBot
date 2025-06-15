@@ -60,21 +60,30 @@ class RequestHandler:
                     
                     elif is_this_chunk_an_update_stream_type: # This means that LangGraph has given us a state update. This will often include a new message from the AI.
                         state_object = chunk[1]
+                        logger.info(f"🧠🧠🧠 LangGraph Output (State Update): {state_object}")
                     
                         # Handle dynamic agent key - look for messages in any nested dict
                         messages = None
                         for agent_key, agent_data in state_object.items():
-                            
                             did_agent_have_a_message_for_us = isinstance(agent_data, dict) and 'messages' in agent_data
                             if did_agent_have_a_message_for_us:
                                 messages = agent_data['messages'] #Question: is this ALL messages coming through, or just the latest AI message?
+
+                                did_agent_evoke_a_tool = messages[0].additional_kwargs.get('tool_calls') is not None
+                                if did_agent_evoke_a_tool:
+                                    tool_call_object = messages[0].additional_kwargs.get('tool_calls')[0] # => {'name': 'run_rails_console_command', 'args': {'rails_console_command': 'Rails.application.credentials.twilio'}, 'id': 'call_QDZ8FhEf8qzbGpGASD3KaCDm', 'type': 'tool_call'}
+                                    tool_call_name = tool_call_object.get("name")
+                                    tool_call_args = tool_call_object.get("args")
+                                    logger.info(f"🔨🔨🔨 Tool Call Name: {tool_call_name}")
+                                    logger.info(f"🔨🔨🔨 Tool Call Args: {tool_call_args}")
 
                                 # AIMessage is not serializable to JSON, so we need to convert it to a string.
                                 messages_as_string = [message.content for message in messages]
 
                                 await websocket.send_json({
                                     "type": "ai", #matches our langgraph streaming type.
-                                    "content": messages_as_string[0]
+                                    "content": messages_as_string[0],
+                                    "tool_calls": messages[0].additional_kwargs.get('tool_calls') if did_agent_evoke_a_tool else []
                                 })
                                 break
                         
