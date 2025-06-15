@@ -114,6 +114,9 @@ async def chat_message(chat_message: ChatMessage):
 
     # Define a generator function to stream the response
     async def response_generator():
+        # Track the final state to serialize at the end
+        final_state = None
+        
         try:
             logger.info(f"[{request_id}] Starting streaming response")
 
@@ -137,9 +140,6 @@ async def chat_message(chat_message: ChatMessage):
                 config={"configurable": {"thread_id": thread_id}},
                 stream_mode=["updates", "messages"] # "values" is the third option ( to return the entire state object )
             ) 
-
-            # Track the final state to serialize at the end
-            final_state = None
 
             # Stream each chunk
             for chunk in stream:
