@@ -18,6 +18,7 @@ import logging
 
 #This is an example of a custom state object for a custom agent.
 from agents.llamapress_legacy.state import LlamaPressMessage
+from agents.llamabot_v1.nodes import LlamaBotState
 
 # from llm.websocket.websocket_helper import send_json_through_websocket
 # from llm.workflows.nodes import build_workflow, build_workflow_saas
@@ -49,8 +50,7 @@ class RequestHandler:
                     "configurable": {
                         "thread_id": f"{message.get('thread_id')}"
                     }
-                }
-                
+                } 
                 async for chunk in app.astream(state, config=config, stream_mode=["updates", "messages"]):
                     is_this_chunk_an_llm_message = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'messages'
                     is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'updates'
@@ -71,7 +71,6 @@ class RequestHandler:
 
                                 # AIMessage is not serializable to JSON, so we need to convert it to a string.
                                 messages_as_string = [message.content for message in messages]
-                                # breakpoint()
 
                                 await websocket.send_json({
                                     "type": "ai", #matches our langgraph streaming type.
@@ -144,14 +143,15 @@ class RequestHandler:
     
     def get_langgraph_app_and_state(self, message: dict):
         app = None
-        state = None
+        state: LlamaBotState = None
         
         if message.get("agent_name") is not None:
             langgraph_workflow = self.get_workflow_from_langgraph_json(message)
             if langgraph_workflow is not None:
                 app = self.get_app_from_workflow_string(langgraph_workflow)
-                state = {
-                    "messages": [HumanMessage(content=message.get("user_message"))]
+                state: LlamaBotState = {
+                    "messages":[HumanMessage(content=message.get("user_message"))],
+                    "api_token":message.get("api_token")
                 }
             else:
                 raise ValueError(f"Unknown workflow: {message.get('agent_name')}")

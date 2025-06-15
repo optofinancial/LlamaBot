@@ -9,17 +9,22 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
 from langgraph.graph import START, StateGraph
 from langgraph.prebuilt import tools_condition
-from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt import ToolNode, InjectedState
 
 import requests
 import json
+from typing import Annotated
+
+class LlamaBotState(MessagesState):
+    api_token: str
 
 # Tools
 @tool
-def run_rails_console_command(rails_console_command: str) -> str:
+def run_rails_console_command(rails_console_command: str, state: Annotated[LlamaBotState, InjectedState]) -> str:
     """
     Run a Rails console command.
     """
+    print ("API TOKEN", state.get("api_token")) # empty. only messages is getting passed through.
     
     # Configuration
     RAILS_SERVER_URL = "http://localhost:3000"
@@ -30,7 +35,7 @@ def run_rails_console_command(rails_console_command: str) -> str:
         response = requests.post(
             API_ENDPOINT,
             json={'command': rails_console_command},
-            headers={'Content-Type': 'application/json'},
+            headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {state.get("api_token")}'},
             timeout=30  # 30 second timeout
         )
         
@@ -91,9 +96,8 @@ def llamabot(state: MessagesState):
    return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])]}
 
 def build_workflow(checkpointer=None):
-    # breakpoint()
     # Graph
-    builder = StateGraph(MessagesState)
+    builder = StateGraph(LlamaBotState)
 
     # Define nodes: these do the work
     builder.add_node("llamabot", llamabot)
