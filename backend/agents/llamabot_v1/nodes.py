@@ -15,7 +15,7 @@ import requests
 import json
 from typing import Annotated
 
-class LlamaBotState(MessagesState):
+class LlamaBotState(MessagesState): 
     api_token: str
 
 # Tools
@@ -54,7 +54,15 @@ def run_rails_console_command(rails_console_command: str, message_to_user: str, 
             else:
                 formatted_result = str(result)
             
-            return f"Command: {rails_console_command}\nType: {result_type}\nResult:\n{formatted_result}"
+            # Create a JSON-serializable dictionary
+            result_data = {
+                "command": rails_console_command,
+                "result": formatted_result,
+                "type": result_type
+            }
+            
+            # Serialize to JSON string for safe transmission
+            return json.dumps(result_data, ensure_ascii=False, indent=2)
         elif response.status_code == 403:
             error_data = response.json()
             return f"Error: {error_data.get('error', 'Command not allowed')}"

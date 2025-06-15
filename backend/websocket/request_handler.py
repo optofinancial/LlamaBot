@@ -86,10 +86,10 @@ class RequestHandler:
                                 base_message_as_dict = dumpd(messages[0])["kwargs"]
 
                                 await websocket.send_json({
-                                    "type": "ai", #matches our langgraph streaming type.
+                                    "type": messages[0].type, #matches our langgraph streaming type.
                                     "content": messages_as_string[0],
                                     "tool_calls": messages[0].additional_kwargs.get('tool_calls') if did_agent_evoke_a_tool else [],
-                                    "data": base_message_as_dict
+                                    "base_message": base_message_as_dict
                                 })
                                 break
                         
