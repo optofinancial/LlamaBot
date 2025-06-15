@@ -8,6 +8,7 @@ from typing import Dict, Optional
 from langchain.schema import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langchain_core.load import dumpd
 from psycopg_pool import AsyncConnectionPool
 
 from dotenv import load_dotenv
@@ -80,10 +81,15 @@ class RequestHandler:
                                 # AIMessage is not serializable to JSON, so we need to convert it to a string.
                                 messages_as_string = [message.content for message in messages]
 
+                                #NOTE: I found we're able to serialize AIMessage into dict using dumpd.
+
+                                base_message_as_dict = dumpd(messages[0])["kwargs"]
+
                                 await websocket.send_json({
                                     "type": "ai", #matches our langgraph streaming type.
                                     "content": messages_as_string[0],
-                                    "tool_calls": messages[0].additional_kwargs.get('tool_calls') if did_agent_evoke_a_tool else []
+                                    "tool_calls": messages[0].additional_kwargs.get('tool_calls') if did_agent_evoke_a_tool else [],
+                                    "data": base_message_as_dict
                                 })
                                 break
                         
