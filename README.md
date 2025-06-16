@@ -385,9 +385,15 @@ Deploy the FastAPI backend to any Python hosting service:
 
 ---
 
-## 📄 License
+## 📜 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+The LlamaBot backend (LangGraph orchestration layer) is licensed under the [GNU Affero General Public License v3 (AGPLv3)](./LICENSE).
+
+This ensures that anyone who uses this code to serve a network-accessible product must also make their source code available under the same license.
+
+If you’d like to use LlamaBot in a closed-source, commercial, or proprietary product, contact us for a commercial license:
+
+📧 kody@llamapress.ai
 
 ---
 
