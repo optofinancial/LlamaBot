@@ -17,6 +17,7 @@ from typing import Annotated
 
 class LlamaBotState(MessagesState): 
     api_token: str
+    agent_instructions: str
 
 # Tools
 @tool
@@ -93,15 +94,18 @@ def run_rails_console_command(rails_console_command: str, message_to_user: str, 
 # Global tools list
 tools = [run_rails_console_command]
 
-# System message
-sys_msg = SystemMessage(content="""You are LlamaBot, an expert full stack Ruby on Rails developer. 
-                        You are an AI agent that has access to the Rails console. 
-                        You are able to run any Rails console command you want. 
-                        You are also able to use the Rails console to get the current state of the Rails application. 
-                        In normal chat conversations, feel free to implement markdown formatting to make your responses more readable, if it's appropriate.""")
+
 
 # Node
-def llamabot(state: MessagesState):
+def llamabot(state: LlamaBotState):
+   
+   additional_instructions = state.get("agent_instructions")
+
+   # System message
+   sys_msg = SystemMessage(content=f"""You are LlamaBot, a helpful AI assistant.
+                        In normal chat conversations, feel free to implement markdown formatting to make your responses more readable, if it's appropriate.
+                        Here are additional instructions provided by the user: <USER_INSTRUCTIONS> {additional_instructions} </USER_INSTRUCTIONS>""")
+
    llm = ChatOpenAI(model="o4-mini")
    llm_with_tools = llm.bind_tools(tools)
    return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])]}
