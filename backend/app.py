@@ -99,6 +99,10 @@ async def root():
     # Serve the home.html file
     with open("home.html") as f:
         return f.read()
+    
+@app.get("/hello", response_class=JSONResponse)
+async def hello():
+    return {"message": "Hello, World! 🦙💬"}
 
 @app.post("/chat-message")
 async def chat_message(chat_message: ChatMessage):
