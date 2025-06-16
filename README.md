@@ -57,7 +57,7 @@ Perfect for:
 ```
 LlamaBot/
 ├── README.md                       # Project documentation
-├── LICENSE                         # MIT License
+├── LICENSE                         # License
 ├── requirements.txt                # Python dependencies
 ├── langgraph.json                  # LangGraph configuration
 ├── chat_app.log                    # Application logs (root level)
