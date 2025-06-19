@@ -53,6 +53,7 @@ app.add_middleware(
 
 # Mount static directories
 app.mount("/assets", StaticFiles(directory="../assets"), name="assets")
+app.mount("/examples", StaticFiles(directory="../examples"), name="examples")
 
 # Initialize the ChatOpenAI client
 llm = ChatOpenAI(
