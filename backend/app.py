@@ -224,7 +224,7 @@ async def chat():
 
 @app.get("/page", response_class=HTMLResponse)
 async def page():
-    with open("../page.html") as f:
+    with open("page.html") as f:
         return f.read()
     
 @app.get("/conversations", response_class=HTMLResponse)
