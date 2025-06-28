@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 
+from langchain_core.load import dumpd
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage
 from langsmith import Client
@@ -217,6 +218,72 @@ async def chat_message(chat_message: ChatMessage):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await WebSocketHandler(websocket, manager).handle_websocket()
+
+@app.post("/llamabot-chat-message")
+async def llamabot_chat_message(chat_message: ChatMessage): #NOTE: This could be arbitrary JSON, depending on the agent that we're using.
+    request_id = f"req_{int(time.time())}_{hash(chat_message.message)%1000}"
+    logger.info(f"[{request_id}] New chat message received: {chat_message.message[:50]}...")
+
+    # Define a generator function to stream the response back
+    async def response_generator():
+        # Track the final state to serialize at the end
+        final_state = None
+        
+        try:
+            logger.info(f"[{request_id}] Starting streaming response")
+            
+            thread_id = chat_message.thread_id or "5"
+            logger.info(f"[{request_id}] Using thread_id: {thread_id}")
+            
+            checkpointer = get_or_create_checkpointer()
+            graph = build_workflow(checkpointer=checkpointer)
+
+            #TODO: Depending on the agent, the state will be different. This state needs to mirror the Rails AgentStateBuilder shape for this associated agent.
+            stream = graph.stream({
+                "messages": [HumanMessage(content=chat_message.message)],
+                "initial_user_message": chat_message.message},
+                config={"configurable": {"thread_id": thread_id}},
+                stream_mode=["updates"]#, "messages"] # "values" is the third option ( to return the entire state object )
+            )
+
+            # Stream each chunk
+            for chunk in stream: #Yield back the raw chunks in real time. Let the frontend handle the LangGraph chunk objects.
+                is_this_chunk_an_llm_message = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'messages'
+                is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'updates'
+                
+                if is_this_chunk_an_llm_message: # For now, we aren't supporting message streaming. (Only stream type "updates" is supported.)
+                    message_chunk_from_llm = chunk[1][0] #AIMessageChunk object -> https://python.langchain.com/api_reference/core/messages/langchain_core.messages.ai.AIMessageChunk.html
+                elif is_this_chunk_an_update_stream_type: # This means that LangGraph has given us a state update. This will often include a new message from the AI.
+                    state_object = chunk[1]
+                    logger.info(f"🧠🧠🧠 LangGraph Output (State Update): {state_object}")
+
+                    for agent_key, agent_data in state_object.items():
+                        messages = agent_data['messages'] #Question: is this ALL messages coming through, or just the latest AI message?
+                        base_message_as_dict = dumpd(messages[0])["kwargs"]  # https://python.langchain.com/api_reference/core/messages/langchain_core.messages.base.BaseMessage.html
+                        yield json.dumps(base_message_as_dict) + "\n"
+
+        except Exception as e:
+            logger.error(f"[{request_id}] Error in stream: {str(e)}", exc_info=True)
+            yield json.dumps({
+                "type": "error",
+                "error": str(e),
+                "request_id": request_id
+            }) + "\n"
+        finally:
+            logger.info(f"[{request_id}] Stream completed")
+            # Send final update with complete messages
+            yield json.dumps({
+                "type": "final",
+                "node": "final",
+                "value": "final",
+                "messages": final_state.get("messages", []) if final_state else []
+            }) + "\n"
+
+    # Return a streaming response
+    return StreamingResponse(
+        response_generator(),
+        media_type="text/event-stream"
+    )
 
 @app.get("/chat", response_class=HTMLResponse)
 async def chat():
