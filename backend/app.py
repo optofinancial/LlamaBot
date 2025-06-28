@@ -24,6 +24,7 @@ import json
 
 from datetime import datetime
 from agents.react_agent.nodes import build_workflow
+from agents.llamabot_v1.nodes import build_workflow as build_workflow_llamabot_v1
 from websocket.web_socket_connection_manager import WebSocketConnectionManager
 from websocket.web_socket_handler import WebSocketHandler
 
@@ -220,10 +221,10 @@ async def websocket_endpoint(websocket: WebSocket):
     await WebSocketHandler(websocket, manager).handle_websocket()
 
 @app.post("/llamabot-chat-message")
-async def llamabot_chat_message(chat_message: ChatMessage): #NOTE: This could be arbitrary JSON, depending on the agent that we're using.
-    request_id = f"req_{int(time.time())}_{hash(chat_message.message)%1000}"
-    logger.info(f"[{request_id}] New chat message received: {chat_message.message[:50]}...")
-
+async def llamabot_chat_message(chat_message: dict): #NOTE: This could be arbitrary JSON, depending on the agent that we're using.
+    request_id = f"req_{int(time.time())}_{hash(chat_message.get('message'))%1000}"
+    logger.info(f"[{request_id}] New chat message received: {chat_message.get('message')[:50]}...")
+    
     # Define a generator function to stream the response back
     async def response_generator():
         # Track the final state to serialize at the end
@@ -232,19 +233,29 @@ async def llamabot_chat_message(chat_message: ChatMessage): #NOTE: This could be
         try:
             logger.info(f"[{request_id}] Starting streaming response")
             
-            thread_id = chat_message.thread_id or "5"
+            thread_id = chat_message.get("thread_id") or "5"
             logger.info(f"[{request_id}] Using thread_id: {thread_id}")
             
             checkpointer = get_or_create_checkpointer()
-            graph = build_workflow(checkpointer=checkpointer)
+            agent_name = chat_message.get("agent_name")
+            graph = build_workflow_llamabot_v1(checkpointer=checkpointer)
 
             #TODO: Depending on the agent, the state will be different. This state needs to mirror the Rails AgentStateBuilder shape for this associated agent.
             stream = graph.stream({
-                "messages": [HumanMessage(content=chat_message.message)],
-                "initial_user_message": chat_message.message},
+                "messages": [HumanMessage(content=chat_message.get("message"))],
+                "initial_user_message": chat_message.get("message"),
+                "api_token": chat_message.get("api_token"),
+                "agent_instructions": chat_message.get("agent_instructions"),
+                },
                 config={"configurable": {"thread_id": thread_id}},
                 stream_mode=["updates"]#, "messages"] # "values" is the third option ( to return the entire state object )
             )
+
+            yield json.dumps({ #tell the front-end that we're starting the stream.
+                "type": "start",
+                "content": "start",
+                "request_id": request_id
+            }) + "\n"
 
             # Stream each chunk
             for chunk in stream: #Yield back the raw chunks in real time. Let the frontend handle the LangGraph chunk objects.
@@ -259,24 +270,21 @@ async def llamabot_chat_message(chat_message: ChatMessage): #NOTE: This could be
 
                     for agent_key, agent_data in state_object.items():
                         messages = agent_data['messages'] #Question: is this ALL messages coming through, or just the latest AI message?
-                        base_message_as_dict = dumpd(messages[0])["kwargs"]  # https://python.langchain.com/api_reference/core/messages/langchain_core.messages.base.BaseMessage.html
+                        base_message_as_dict = dumpd(messages[0])["kwargs"]  # This is a BaseMessage object. See: https://python.langchain.com/api_reference/core/messages/langchain_core.messages.base.BaseMessage.html
                         yield json.dumps(base_message_as_dict) + "\n"
 
         except Exception as e:
             logger.error(f"[{request_id}] Error in stream: {str(e)}", exc_info=True)
-            yield json.dumps({
+            yield json.dumps({ #tell the front-end we're run into errors.
                 "type": "error",
-                "error": str(e),
-                "request_id": request_id
+                "content": str(e)
             }) + "\n"
         finally:
             logger.info(f"[{request_id}] Stream completed")
             # Send final update with complete messages
-            yield json.dumps({
+            yield json.dumps({ #tell the front-end that we're ending the stream.
                 "type": "final",
-                "node": "final",
-                "value": "final",
-                "messages": final_state.get("messages", []) if final_state else []
+                "content": "final"
             }) + "\n"
 
     # Return a streaming response
