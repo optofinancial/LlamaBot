@@ -15,6 +15,7 @@ import requests
 import json
 from typing import Annotated
 
+# Warning: Brittle - None type will break this when it's injected into the state for the tool call, and it silently fails. So if it doesn't map state types properly from the frontend, it will break. (must be exactly what's defined here).
 class LlamaBotState(MessagesState): 
     api_token: str
     agent_instructions: str
