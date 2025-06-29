@@ -12,6 +12,10 @@ from langsmith import Client
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.base import CheckpointTuple
 from langgraph.checkpoint.postgres import PostgresSaver
+
+from psycopg_pool import AsyncConnectionPool
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
 from psycopg_pool import ConnectionPool
 
 from pydantic import BaseModel
@@ -96,6 +100,19 @@ def get_or_create_checkpointer():
             app.state.checkpointer = MemorySaver()
     
     return app.state.checkpointer
+
+def get_or_create_async_checkpointer():
+    if app.state.async_checkpointer is None:
+        db_uri = os.getenv("DB_URI")
+        if db_uri:
+            pool = AsyncConnectionPool(db_uri)
+            app.state.async_checkpointer = AsyncPostgresSaver(pool)
+            app.state.async_checkpointer.setup()
+            logger.info("Using PostgreSQL persistence.")
+        else:
+            logger.info("No DB_URI found. Using MemorySaver for session-based persistence.")
+            app.state.async_checkpointer = MemorySaver()
+    return app.state.async_checkpointer
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -236,12 +253,12 @@ async def llamabot_chat_message(chat_message: dict): #NOTE: This could be arbitr
             thread_id = chat_message.get("thread_id") or "5"
             logger.info(f"[{request_id}] Using thread_id: {thread_id}")
             
-            checkpointer = get_or_create_checkpointer()
+            checkpointer = get_or_create_async_checkpointer()
             agent_name = chat_message.get("agent_name")
             graph = build_workflow_llamabot_v1(checkpointer=checkpointer)
 
             #TODO: Depending on the agent, the state will be different. This state needs to mirror the Rails AgentStateBuilder shape for this associated agent.
-            stream = graph.stream({
+            stream = graph.astream({
                 "messages": [HumanMessage(content=chat_message.get("message"))],
                 "initial_user_message": chat_message.get("message"),
                 "api_token": chat_message.get("api_token"),
@@ -251,6 +268,13 @@ async def llamabot_chat_message(chat_message: dict): #NOTE: This could be arbitr
                 stream_mode=["updates"]#, "messages"] # "values" is the third option ( to return the entire state object )
             )
 
+            # Send SSE start event
+            # yield f"data: {json.dumps({
+            #     'type': 'start',
+            #     'content': 'start',
+            #     'request_id': request_id
+            # })}\n\n"
+
             yield json.dumps({ #tell the front-end that we're starting the stream.
                 "type": "start",
                 "content": "start",
@@ -258,7 +282,7 @@ async def llamabot_chat_message(chat_message: dict): #NOTE: This could be arbitr
             }) + "\n"
 
             # Stream each chunk
-            for chunk in stream: #Yield back the raw chunks in real time. Let the frontend handle the LangGraph chunk objects.
+            async for chunk in stream: #Yield back the raw chunks in real time. Let the frontend handle the LangGraph chunk objects.
                 is_this_chunk_an_llm_message = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'messages'
                 is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'updates'
                 
@@ -271,17 +295,20 @@ async def llamabot_chat_message(chat_message: dict): #NOTE: This could be arbitr
                     for agent_key, agent_data in state_object.items():
                         messages = agent_data['messages'] #Question: is this ALL messages coming through, or just the latest AI message?
                         base_message_as_dict = dumpd(messages[0])["kwargs"]  # This is a BaseMessage object. See: https://python.langchain.com/api_reference/core/messages/langchain_core.messages.base.BaseMessage.html
+                        # Send SSE data event for each LLM message
+                        # yield f"data: {json.dumps(base_message_as_dict)}\n\n"
                         yield json.dumps(base_message_as_dict) + "\n"
+
 
         except Exception as e:
             logger.error(f"[{request_id}] Error in stream: {str(e)}", exc_info=True)
-            yield json.dumps({ #tell the front-end we're run into errors.
-                "type": "error",
-                "content": str(e)
-            }) + "\n"
+            # SSE error event
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
         finally:
             logger.info(f"[{request_id}] Stream completed")
-            # Send final update with complete messages
+            # SSE final event
+            # yield f"data: {json.dumps({'type': 'final', 'content': 'final'})}\n\n"
+                     # Send final update with complete messages
             yield json.dumps({ #tell the front-end that we're ending the stream.
                 "type": "final",
                 "content": "final"
@@ -292,6 +319,23 @@ async def llamabot_chat_message(chat_message: dict): #NOTE: This could be arbitr
         response_generator(),
         media_type="text/event-stream"
     )
+
+
+@app.post("/llamabot-chat-message-v2")
+async def llamabot_chat_message_v2(chat_message: dict):
+    request_id = f"req_{int(time.time())}"
+    logger.info(f"[{request_id}] new message: {chat_message.get('message')!r}")
+
+    async def event_stream():
+        # ----- BEGIN: replace this with your real agent loop ----------
+        for i in range(5):
+            payload = {"chunk": i, "text": f"token-{i}"}
+            # Every Server-Sent-Event must end with a blank line
+            yield f"data: {json.dumps(payload)}\n\n"
+            await asyncio.sleep(1)           # <-- forces a real pause
+        # ----- END -----------------------------------------------------
+    return StreamingResponse(event_stream(),
+                             media_type="text/event-stream")
 
 @app.get("/chat", response_class=HTMLResponse)
 async def chat():
