@@ -262,7 +262,7 @@ async def llamabot_chat_message(chat_message: dict): #NOTE: This could be arbitr
                 "messages": [HumanMessage(content=chat_message.get("message"))],
                 "initial_user_message": chat_message.get("message"),
                 "api_token": chat_message.get("api_token"),
-                "agent_instructions": chat_message.get("agent_instructions"),
+                "agent_instructions": chat_message.get("agent_prompt"),
                 },
                 config={"configurable": {"thread_id": thread_id}},
                 stream_mode=["updates"]#, "messages"] # "values" is the third option ( to return the entire state object )
@@ -303,7 +303,10 @@ async def llamabot_chat_message(chat_message: dict): #NOTE: This could be arbitr
         except Exception as e:
             logger.error(f"[{request_id}] Error in stream: {str(e)}", exc_info=True)
             # SSE error event
-            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            yield json.dumps({
+                "type": "error",
+                "content": str(e)
+            }) + "\n"
         finally:
             logger.info(f"[{request_id}] Stream completed")
             # SSE final event
