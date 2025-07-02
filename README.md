@@ -44,7 +44,7 @@ Perfect for:
 ```bash
 # Run via Docker
 # (only requirement: Docker and your OpenAI key)
-docker run -e OPENAI_API_KEY=sk-... -p 8000:8000 yourdockerhub/llamabot-backend
+docker run -e OPENAI_API_KEY=sk-... -p 8000:8000 kody06/llamabot-backend
 ```
 
 Then open:
