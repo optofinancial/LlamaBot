@@ -32,7 +32,9 @@ def run_rails_console_command(rails_console_command: str, message_to_user: str, 
     print ("API TOKEN", state.get("api_token")) # empty. only messages is getting passed through.
     
     # Configuration
-    RAILS_SERVER_URL = "http://localhost:3000"
+    # RAILS_SERVER_URL = "http://localhost:3000"
+    RAILS_SERVER_URL = "http://host.docker.internal:3000"
+
     API_ENDPOINT = f"{RAILS_SERVER_URL}/llama_bot/agent/command"
     
     try:

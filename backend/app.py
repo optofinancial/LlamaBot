@@ -81,37 +81,64 @@ class ChatMessage(BaseModel):
 app.state.checkpointer = None
 app.state.async_checkpointer = None
 
+# Suppress psycopg connection error spam when PostgreSQL is unavailable
+psycopg_logger = logging.getLogger('psycopg.pool')
+psycopg_logger.setLevel(logging.ERROR)
+
 def get_or_create_checkpointer():
     """Get persistent checkpointer, creating once if needed"""
     if app.state.checkpointer is None:
         db_uri = os.getenv("DB_URI")
-        if db_uri:
+        if db_uri and db_uri.strip():
             try:
-                # Create connection pool and PostgresSaver directly
-                pool = ConnectionPool(db_uri)
+                # Create connection pool with limited retries and timeout
+                pool = ConnectionPool(
+                    db_uri,
+                    min_size=1,
+                    max_size=5,
+                    timeout=5.0,  # 5 second connection timeout
+                    max_idle=300.0,  # 5 minute idle timeout
+                    max_lifetime=3600.0,  # 1 hour max connection lifetime
+                    reconnect_failed=lambda pool: logger.warning("PostgreSQL connection failed, using MemorySaver for persistence")
+                )
                 app.state.checkpointer = PostgresSaver(pool)
                 app.state.checkpointer.setup()
-                logger.info("Using PostgreSQL persistence.")
+                logger.info("✅ Connected to PostgreSQL for persistence")
             except Exception as e:
-                logger.warning(f"Failed to connect to PostgreSQL: {e}. Using MemorySaver.")
+                logger.warning(f"❌ PostgreSQL unavailable ({str(e).split(':', 1)[0]}). Using MemorySaver for session-based persistence.")
                 app.state.checkpointer = MemorySaver()
         else:
-            logger.info("No DB_URI found. Using MemorySaver for session-based persistence.")
+            logger.info("📝 No DB_URI configured. Using MemorySaver for session-based persistence.")
             app.state.checkpointer = MemorySaver()
     
     return app.state.checkpointer
 
 def get_or_create_async_checkpointer():
+    """Get async persistent checkpointer, creating once if needed"""
     if app.state.async_checkpointer is None:
         db_uri = os.getenv("DB_URI")
-        if db_uri:
-            pool = AsyncConnectionPool(db_uri)
-            app.state.async_checkpointer = AsyncPostgresSaver(pool)
-            app.state.async_checkpointer.setup()
-            logger.info("Using PostgreSQL persistence.")
+        if db_uri and db_uri.strip():
+            try:
+                # Create async connection pool with limited retries and timeout
+                pool = AsyncConnectionPool(
+                    db_uri,
+                    min_size=1,
+                    max_size=5,
+                    timeout=5.0,  # 5 second connection timeout
+                    max_idle=300.0,  # 5 minute idle timeout
+                    max_lifetime=3600.0,  # 1 hour max connection lifetime
+                    reconnect_failed=lambda pool: logger.warning("PostgreSQL async connection failed, using MemorySaver for persistence")
+                )
+                app.state.async_checkpointer = AsyncPostgresSaver(pool)
+                app.state.async_checkpointer.setup()
+                logger.info("✅ Connected to PostgreSQL (async) for persistence")
+            except Exception as e:
+                logger.warning(f"❌ PostgreSQL unavailable for async operations ({str(e).split(':', 1)[0]}). Using MemorySaver for session-based persistence.")
+                app.state.async_checkpointer = MemorySaver()
         else:
-            logger.info("No DB_URI found. Using MemorySaver for session-based persistence.")
+            logger.info("📝 No DB_URI configured. Using MemorySaver for async session-based persistence.")
             app.state.async_checkpointer = MemorySaver()
+    
     return app.state.async_checkpointer
 
 @app.get("/", response_class=HTMLResponse)
