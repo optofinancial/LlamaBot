@@ -15,6 +15,7 @@ import requests
 import json
 from typing import Annotated
 
+# Warning: Brittle - None type will break this when it's injected into the state for the tool call, and it silently fails. So if it doesn't map state types properly from the frontend, it will break. (must be exactly what's defined here).
 class LlamaBotState(MessagesState): 
     api_token: str
     agent_instructions: str
@@ -31,7 +32,9 @@ def run_rails_console_command(rails_console_command: str, message_to_user: str, 
     print ("API TOKEN", state.get("api_token")) # empty. only messages is getting passed through.
     
     # Configuration
-    RAILS_SERVER_URL = "http://localhost:3000"
+    # RAILS_SERVER_URL = "http://localhost:3000"
+    RAILS_SERVER_URL = "http://host.docker.internal:3000"
+
     API_ENDPOINT = f"{RAILS_SERVER_URL}/llama_bot/agent/command"
     
     try:

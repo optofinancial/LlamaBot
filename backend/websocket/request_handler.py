@@ -165,7 +165,7 @@ class RequestHandler:
             if langgraph_workflow is not None:
                 app = self.get_app_from_workflow_string(langgraph_workflow)
                 state: LlamaBotState = {
-                    "messages":[HumanMessage(content=message.get("user_message"))],
+                    "messages":[HumanMessage(content=message.get("message"))],
                     "api_token":message.get("api_token"),
                     "agent_instructions":message.get("agent_prompt")
                 }

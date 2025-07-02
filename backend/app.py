@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 
+from langchain_core.load import dumpd
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage
 from langsmith import Client
@@ -11,6 +12,10 @@ from langsmith import Client
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.base import CheckpointTuple
 from langgraph.checkpoint.postgres import PostgresSaver
+
+from psycopg_pool import AsyncConnectionPool
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
 from psycopg_pool import ConnectionPool
 
 from pydantic import BaseModel
@@ -23,6 +28,7 @@ import json
 
 from datetime import datetime
 from agents.react_agent.nodes import build_workflow
+from agents.llamabot_v1.nodes import build_workflow as build_workflow_llamabot_v1
 from websocket.web_socket_connection_manager import WebSocketConnectionManager
 from websocket.web_socket_handler import WebSocketHandler
 
@@ -52,8 +58,8 @@ app.add_middleware(
 )
 
 # Mount static directories
-app.mount("/assets", StaticFiles(directory="../assets"), name="assets")
-app.mount("/examples", StaticFiles(directory="../examples"), name="examples")
+# app.mount("/assets", StaticFiles(directory="../assets"), name="assets")
+# app.mount("/examples", StaticFiles(directory="../examples"), name="examples")
 
 # Initialize the ChatOpenAI client
 llm = ChatOpenAI(
@@ -75,25 +81,65 @@ class ChatMessage(BaseModel):
 app.state.checkpointer = None
 app.state.async_checkpointer = None
 
+# Suppress psycopg connection error spam when PostgreSQL is unavailable
+psycopg_logger = logging.getLogger('psycopg.pool')
+psycopg_logger.setLevel(logging.ERROR)
+
 def get_or_create_checkpointer():
     """Get persistent checkpointer, creating once if needed"""
     if app.state.checkpointer is None:
         db_uri = os.getenv("DB_URI")
-        if db_uri:
+        if db_uri and db_uri.strip():
             try:
-                # Create connection pool and PostgresSaver directly
-                pool = ConnectionPool(db_uri)
+                # Create connection pool with limited retries and timeout
+                pool = ConnectionPool(
+                    db_uri,
+                    min_size=1,
+                    max_size=5,
+                    timeout=5.0,  # 5 second connection timeout
+                    max_idle=300.0,  # 5 minute idle timeout
+                    max_lifetime=3600.0,  # 1 hour max connection lifetime
+                    reconnect_failed=lambda pool: logger.warning("PostgreSQL connection failed, using MemorySaver for persistence")
+                )
                 app.state.checkpointer = PostgresSaver(pool)
                 app.state.checkpointer.setup()
-                logger.info("Using PostgreSQL persistence.")
+                logger.info("✅ Connected to PostgreSQL for persistence")
             except Exception as e:
-                logger.warning(f"Failed to connect to PostgreSQL: {e}. Using MemorySaver.")
+                logger.warning(f"❌ PostgreSQL unavailable ({str(e).split(':', 1)[0]}). Using MemorySaver for session-based persistence.")
                 app.state.checkpointer = MemorySaver()
         else:
-            logger.info("No DB_URI found. Using MemorySaver for session-based persistence.")
+            logger.info("📝 No DB_URI configured. Using MemorySaver for session-based persistence.")
             app.state.checkpointer = MemorySaver()
     
     return app.state.checkpointer
+
+def get_or_create_async_checkpointer():
+    """Get async persistent checkpointer, creating once if needed"""
+    if app.state.async_checkpointer is None:
+        db_uri = os.getenv("DB_URI")
+        if db_uri and db_uri.strip():
+            try:
+                # Create async connection pool with limited retries and timeout
+                pool = AsyncConnectionPool(
+                    db_uri,
+                    min_size=1,
+                    max_size=5,
+                    timeout=5.0,  # 5 second connection timeout
+                    max_idle=300.0,  # 5 minute idle timeout
+                    max_lifetime=3600.0,  # 1 hour max connection lifetime
+                    reconnect_failed=lambda pool: logger.warning("PostgreSQL async connection failed, using MemorySaver for persistence")
+                )
+                app.state.async_checkpointer = AsyncPostgresSaver(pool)
+                app.state.async_checkpointer.setup()
+                logger.info("✅ Connected to PostgreSQL (async) for persistence")
+            except Exception as e:
+                logger.warning(f"❌ PostgreSQL unavailable for async operations ({str(e).split(':', 1)[0]}). Using MemorySaver for session-based persistence.")
+                app.state.async_checkpointer = MemorySaver()
+        else:
+            logger.info("📝 No DB_URI configured. Using MemorySaver for async session-based persistence.")
+            app.state.async_checkpointer = MemorySaver()
+    
+    return app.state.async_checkpointer
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -217,6 +263,109 @@ async def chat_message(chat_message: ChatMessage):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await WebSocketHandler(websocket, manager).handle_websocket()
+
+@app.post("/llamabot-chat-message")
+async def llamabot_chat_message(chat_message: dict): #NOTE: This could be arbitrary JSON, depending on the agent that we're using.
+    request_id = f"req_{int(time.time())}_{hash(chat_message.get('message'))%1000}"
+    logger.info(f"[{request_id}] New chat message received: {chat_message.get('message')[:50]}...")
+    
+    # Define a generator function to stream the response back
+    async def response_generator():
+        # Track the final state to serialize at the end
+        final_state = None
+        
+        try:
+            logger.info(f"[{request_id}] Starting streaming response")
+            
+            thread_id = chat_message.get("thread_id") or "5"
+            logger.info(f"[{request_id}] Using thread_id: {thread_id}")
+            
+            checkpointer = get_or_create_async_checkpointer()
+            agent_name = chat_message.get("agent_name")
+            graph = build_workflow_llamabot_v1(checkpointer=checkpointer)
+
+            #TODO: Depending on the agent, the state will be different. This state needs to mirror the Rails AgentStateBuilder shape for this associated agent.
+            stream = graph.astream({
+                "messages": [HumanMessage(content=chat_message.get("message"))],
+                "initial_user_message": chat_message.get("message"),
+                "api_token": chat_message.get("api_token"),
+                "agent_instructions": chat_message.get("agent_prompt"),
+                },
+                config={"configurable": {"thread_id": thread_id}},
+                stream_mode=["updates"]#, "messages"] # "values" is the third option ( to return the entire state object )
+            )
+
+            # Send SSE start event
+            # yield f"data: {json.dumps({
+            #     'type': 'start',
+            #     'content': 'start',
+            #     'request_id': request_id
+            # })}\n\n"
+
+            yield json.dumps({ #tell the front-end that we're starting the stream.
+                "type": "start",
+                "content": "start",
+                "request_id": request_id
+            }) + "\n"
+
+            # Stream each chunk
+            async for chunk in stream: #Yield back the raw chunks in real time. Let the frontend handle the LangGraph chunk objects.
+                is_this_chunk_an_llm_message = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'messages'
+                is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'updates'
+                
+                if is_this_chunk_an_llm_message: # For now, we aren't supporting message streaming. (Only stream type "updates" is supported.)
+                    message_chunk_from_llm = chunk[1][0] #AIMessageChunk object -> https://python.langchain.com/api_reference/core/messages/langchain_core.messages.ai.AIMessageChunk.html
+                elif is_this_chunk_an_update_stream_type: # This means that LangGraph has given us a state update. This will often include a new message from the AI.
+                    state_object = chunk[1]
+                    logger.info(f"🧠🧠🧠 LangGraph Output (State Update): {state_object}")
+
+                    for agent_key, agent_data in state_object.items():
+                        messages = agent_data['messages'] #Question: is this ALL messages coming through, or just the latest AI message?
+                        base_message_as_dict = dumpd(messages[0])["kwargs"]  # This is a BaseMessage object. See: https://python.langchain.com/api_reference/core/messages/langchain_core.messages.base.BaseMessage.html
+                        # Send SSE data event for each LLM message
+                        # yield f"data: {json.dumps(base_message_as_dict)}\n\n"
+                        yield json.dumps(base_message_as_dict) + "\n"
+
+
+        except Exception as e:
+            logger.error(f"[{request_id}] Error in stream: {str(e)}", exc_info=True)
+            # SSE error event
+            yield json.dumps({
+                "type": "error",
+                "content": str(e)
+            }) + "\n"
+        finally:
+            logger.info(f"[{request_id}] Stream completed")
+            # SSE final event
+            # yield f"data: {json.dumps({'type': 'final', 'content': 'final'})}\n\n"
+                     # Send final update with complete messages
+            yield json.dumps({ #tell the front-end that we're ending the stream.
+                "type": "final",
+                "content": "final"
+            }) + "\n"
+
+    # Return a streaming response
+    return StreamingResponse(
+        response_generator(),
+        media_type="text/event-stream"
+    )
+
+
+@app.post("/llamabot-chat-message-v2")
+async def llamabot_chat_message_v2(chat_message: dict):
+    request_id = f"req_{int(time.time())}"
+    logger.info(f"[{request_id}] new message: {chat_message.get('message')!r}")
+
+    async def event_stream():
+        # ----- BEGIN: replace this with your real agent loop ----------
+        for i in range(5):
+            payload = {"chunk": i, "text": f"token-{i}"}
+            # Every Server-Sent-Event must end with a blank line
+            yield f"data: {json.dumps(payload)}\n\n"
+            await asyncio.sleep(1)           # <-- forces a real pause
+        # ----- END -----------------------------------------------------
+    return StreamingResponse(event_stream(),
+                             media_type="text/event-stream")
 
 @app.get("/chat", response_class=HTMLResponse)
 async def chat():
