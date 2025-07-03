@@ -104,14 +104,15 @@ end
 
 ```
 LlamaBot/
-├── backend/
-│   ├── app.py             # FastAPI app with WebSocket + API routes
+├── app/
+│   ├── main.py            # FastAPI app with WebSocket + API routes
 │   ├── chat.html          # Chat interface UI
 │   ├── page.html          # Rendered result display
 │   ├── agents/            # LangGraph agent logic
 │   └── ...                # Utility code, workflows, memory, etc.
-├── Dockerfile             # To run the backend agent anywhere
-├── requirements.txt       # Python deps
+├── Dockerfile             # Container definition to run the backend anywhere
+├── requirements.txt       # Python dependencies
+├── fly.toml               # Fly.io deployment config
 └── README.md
 ```
 
