@@ -133,6 +133,18 @@ Browse to: [http://localhost:8000/chat](http://localhost:8000/chat)
 
 ---
 
+## 🚀 One-click Deploy to Fly.io
+
+1. Install [flyctl](https://fly.io/docs/hands-on/install-flyctl/)
+2. Clone this repo
+3. Run:
+
+```bash
+fly launch --no-deploy
+fly deploy
+fly secrets set OPENAI_API_KEY=sk-...
+```
+
 ## 🤝 Contributing
 
 We welcome PRs, feedback, and ideas! Open an issue or drop into our [Discord](https://discord.gg/HtVVSxrK).
