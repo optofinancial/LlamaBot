@@ -429,7 +429,7 @@
         // Fetch conversations from API
         async function loadConversations() {
             try {
-                const response = await fetch('http://localhost:8000/threads');
+                const response = await fetch('/threads');
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
@@ -707,7 +707,7 @@
                 
                 try {
                     // Set up fetch for streaming with the current thread_id
-                    const response = await fetch('http://localhost:8000/chat-message', {
+                    const response = await fetch('/chat-message', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
