@@ -126,7 +126,7 @@ git clone https://github.com/KodyKendall/LlamaBot.git
 cd LlamaBot/backend
 python -m venv venv && source venv/bin/activate
 pip install -r ../requirements.txt
-uvicorn app:app --reload
+uvicorn main:app --reload
 ```
 
 Browse to: [http://localhost:8000/chat](http://localhost:8000/chat)
