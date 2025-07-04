@@ -1,4 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 import asyncio
 import logging
 from typing import Union
@@ -16,6 +17,10 @@ class WebSocketConnectionManager:
         self.active_connections: list[WebSocket] = []
         self.active_tasks: set = set()
         self._connection_ids: set = set()  # Track unique connections
+
+    def _is_websocket_open(self, websocket: WebSocket) -> bool:
+        """Check if the WebSocket connection is still open"""
+        return websocket.client_state == WebSocketState.CONNECTED
 
     async def connect(self, websocket: WebSocket):
         try:
@@ -39,14 +44,27 @@ class WebSocketConnectionManager:
             logging.info(f"Disconnect Exception in WebSocketConnectionManager: {e}")
 
     async def send_personal_message(self, message: Union[str, dict], websocket: WebSocket):
-        if isinstance(message, dict):
-            await websocket.send_json(message)
-        else:
-            await websocket.send_text(message)
+        # Only send if WebSocket is still open
+        if self._is_websocket_open(websocket):
+            try:
+                if isinstance(message, dict):
+                    await websocket.send_json(message)
+                else:
+                    await websocket.send_text(message)
+            except Exception as e:
+                logger.warning(f"Failed to send message to WebSocket: {e}")
 
     async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            await connection.send_json({"message": message})
+        # Create a copy of active connections to avoid modification during iteration
+        connections_to_send = self.active_connections.copy()
+        for connection in connections_to_send:
+            if self._is_websocket_open(connection):
+                try:
+                    await connection.send_json({"message": message})
+                except Exception as e:
+                    logger.warning(f"Failed to broadcast message to WebSocket: {e}")
+                    # Remove the connection if it's no longer valid
+                    self.disconnect(connection)
 
     def cleanup(self):
         # Cancel all active tasks

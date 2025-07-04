@@ -1,6 +1,7 @@
 from asyncio import Lock, CancelledError
 
 from fastapi import FastAPI, WebSocket
+from starlette.websockets import WebSocketState
 
 from websocket.web_socket_request_context import WebSocketRequestContext
 from typing import Dict, Optional
@@ -37,6 +38,10 @@ class RequestHandler:
         if ws_id not in self.locks:
             self.locks[ws_id] = Lock()
         return self.locks[ws_id]
+
+    def _is_websocket_open(self, websocket: WebSocket) -> bool:
+        """Check if the WebSocket connection is still open"""
+        return websocket.client_state == WebSocketState.CONNECTED
 
     async def handle_request(self, message: dict, websocket: WebSocket):
         """Handle incoming WebSocket requests with proper locking and cancellation"""
@@ -87,12 +92,14 @@ class RequestHandler:
 
                                 base_message_as_dict = dumpd(messages[0])["kwargs"]
 
-                                await websocket.send_json({
-                                    "type": messages[0].type, #matches our langgraph streaming type.
-                                    "content": messages_as_string[0],
-                                    "tool_calls": messages[0].additional_kwargs.get('tool_calls') if did_agent_evoke_a_tool else [],
-                                    "base_message": base_message_as_dict
-                                })
+                                # Only send if WebSocket is still open
+                                if self._is_websocket_open(websocket):
+                                    await websocket.send_json({
+                                        "type": messages[0].type, #matches our langgraph streaming type.
+                                        "content": messages_as_string[0],
+                                        "tool_calls": messages[0].additional_kwargs.get('tool_calls') if did_agent_evoke_a_tool else [],
+                                        "base_message": base_message_as_dict
+                                    })
                                 break
                         
                         logger.info(f"LangGraph Output (State Update): {chunk}")
@@ -105,17 +112,21 @@ class RequestHandler:
 
             except CancelledError as e:
                 logger.info("handle_request was cancelled")
-                await websocket.send_json({
-                    "type": "error",
-                    "content": f"Cancelled!"
-                })
+                # Only send error message if WebSocket is still open
+                if self._is_websocket_open(websocket):
+                    await websocket.send_json({
+                        "type": "error",
+                        "content": f"Cancelled!"
+                    })
                 raise e
             except Exception as e:
                 logger.error(f"Error handling request: {str(e)}", exc_info=True)
-                await websocket.send_json({
-                    "type": "error",
-                    "content": f"Error processing request: {str(e)}"
-                })
+                # Only send error message if WebSocket is still open
+                if self._is_websocket_open(websocket):
+                    await websocket.send_json({
+                        "type": "error",
+                        "content": f"Error processing request: {str(e)}"
+                    })
                 raise e
 
     async def get_chat_history(self, thread_id: str):
