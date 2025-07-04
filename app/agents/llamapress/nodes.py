@@ -19,6 +19,7 @@ from typing import Annotated
 class LlamaPressState(MessagesState): 
     api_token: str
     agent_instructions: str
+    page_id: str
 
 # Tools
 @tool
@@ -31,6 +32,42 @@ def write_html_page(full_html_document: str, message_to_user: str, internal_thou
    state is the state of the agent.
    """
    print ("API TOKEN", state.get("api_token")) # empty. only messages is getting passed through.
+   
+   # Configuration
+   RAILS_SERVER_URL = "http://host.docker.internal:3000"
+   breakpoint()
+   API_ENDPOINT = f"{RAILS_SERVER_URL}/pages/{state.get('page_id')}"
+
+   try:
+       # Make HTTP request to Rails API
+       response = requests.put(
+           API_ENDPOINT,
+           json={'content': full_html_document},
+           headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {state.get("api_token")}'},
+           timeout=30  # 30 second timeout
+       )
+
+       # Parse the response
+       if response.status_code == 200:
+           data = response.json()
+           return json.dumps(data, ensure_ascii=False, indent=2)
+       else:
+           return f"HTTP Error {response.status_code}: {response.text}"
+
+   except requests.exceptions.ConnectionError:
+       return "Error: Could not connect to Rails server. Make sure your Rails app is running."
+
+   except requests.exceptions.Timeout:
+       return "Error: Request timed out. The Rails request may be taking too long to execute."
+
+   except requests.exceptions.RequestException as e:
+       return f"Request Error: {str(e)}"
+
+   except json.JSONDecodeError:
+       return f"Error: Invalid JSON response from server. Raw response: {response.text}"
+
+   except Exception as e:
+       return f"Unexpected Error: {str(e)}"
 
    print("Write to filesystem!")
    return "HTML page written to filesystem!"
