@@ -18,7 +18,6 @@ import os
 import logging
 
 #This is an example of a custom state object for a custom agent.
-from agents.llamapress_legacy.state import LlamaPressMessage
 from agents.llamabot_v1.nodes import LlamaBotState
 
 # from llm.websocket.websocket_helper import send_json_through_websocket
@@ -52,6 +51,9 @@ class RequestHandler:
                         "thread_id": f"{message.get('thread_id')}"
                     }
                 } 
+
+                # breakpoint()
+
                 async for chunk in app.astream(state, config=config, stream_mode=["updates", "messages"]):
                     is_this_chunk_an_llm_message = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'messages'
                     is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'updates'

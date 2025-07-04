@@ -6,11 +6,18 @@ import logging
 import time
 import json
 
-from agents.llamapress_legacy.state import LlamaPressMessage
+from pydantic import BaseModel
+
 from websocket.web_socket_connection_manager import WebSocketConnectionManager
 from websocket.request_handler import RequestHandler
 
 logger = logging.getLogger(__name__)
+
+# Pydantic model for chat request
+class ChatMessage(dict):
+    message: str
+    thread_id: str = None  # Optional thread_id parameter
+    agent: str = None  # Optional agent parameter
 
 class WebSocketHandler:
     def __init__(self, websocket: WebSocket, manager: WebSocketConnectionManager):
@@ -63,7 +70,7 @@ class WebSocketHandler:
                         except asyncio.CancelledError:
                             logger.info("Previous task was cancelled successfully")
 
-                    message = LlamaPressMessage(**json_data)
+                    message = ChatMessage(**json_data)
 
                     logger.info(f"Received message: {message}")
                     current_task = asyncio.create_task(
