@@ -18,11 +18,6 @@ import importlib
 import os
 import logging
 
-#This is an example of a custom state object for a custom agent.
-from agents.llamabot_v1.nodes import LlamaBotState
-
-# from llm.websocket.websocket_helper import send_json_through_websocket
-# from llm.workflows.nodes import build_workflow, build_workflow_saas
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -57,8 +52,6 @@ class RequestHandler:
                     }
                 } 
 
-                # breakpoint()
-
                 async for chunk in app.astream(state, config=config, stream_mode=["updates", "messages"]):
                     is_this_chunk_an_llm_message = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'messages'
                     is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'updates'
@@ -77,29 +70,44 @@ class RequestHandler:
                             if did_agent_have_a_message_for_us:
                                 messages = agent_data['messages'] #Question: is this ALL messages coming through, or just the latest AI message?
 
-                                did_agent_evoke_a_tool = messages[0].additional_kwargs.get('tool_calls') is not None
-                                if did_agent_evoke_a_tool:
-                                    tool_call_object = messages[0].additional_kwargs.get('tool_calls')[0] # => {'name': 'run_rails_console_command', 'args': {'rails_console_command': 'Rails.application.credentials.twilio'}, 'id': 'call_QDZ8FhEf8qzbGpGASD3KaCDm', 'type': 'tool_call'}
-                                    tool_call_name = tool_call_object.get("name")
-                                    tool_call_args = tool_call_object.get("args")
-                                    logger.info(f"🔨🔨🔨 Tool Call Name: {tool_call_name}")
-                                    logger.info(f"🔨🔨🔨 Tool Call Args: {tool_call_args}")
+                                # Safe check for tool calls with better error handling
+                                did_agent_evoke_a_tool = False
+                                tool_calls = []
+                                
+                                if messages and len(messages) > 0:
+                                    message = messages[0]
+                                    if hasattr(message, 'additional_kwargs') and message.additional_kwargs:
+                                        tool_calls_data = message.additional_kwargs.get('tool_calls')
+                                        if tool_calls_data:
+                                            did_agent_evoke_a_tool = True
+                                            tool_calls = tool_calls_data
+                                            
+                                            # Log tool call details
+                                            if len(tool_calls) > 0:
+                                                tool_call_object = tool_calls[0]
+                                                tool_call_name = tool_call_object.get("name")
+                                                tool_call_args = tool_call_object.get("args")
+                                                logger.info(f"🔨🔨🔨 Tool Call Name: {tool_call_name}")
+                                                logger.info(f"🔨🔨🔨 Tool Call Args: {tool_call_args}")
 
-                                # AIMessage is not serializable to JSON, so we need to convert it to a string.
-                                messages_as_string = [message.content for message in messages]
+                                    # AIMessage is not serializable to JSON, so we need to convert it to a string.
+                                    messages_as_string = [msg.content if hasattr(msg, 'content') else str(msg) for msg in messages]
 
-                                #NOTE: I found we're able to serialize AIMessage into dict using dumpd.
+                                    #NOTE: I found we're able to serialize AIMessage into dict using dumpd.
+                                    try:
+                                        base_message_as_dict = dumpd(message)["kwargs"]
+                                    except Exception as e:
+                                        logger.warning(f"Failed to serialize message: {e}")
+                                        base_message_as_dict = {"content": str(message), "type": "ai"}
 
-                                base_message_as_dict = dumpd(messages[0])["kwargs"]
-
-                                # Only send if WebSocket is still open
-                                if self._is_websocket_open(websocket):
-                                    await websocket.send_json({
-                                        "type": messages[0].type, #matches our langgraph streaming type.
-                                        "content": messages_as_string[0],
-                                        "tool_calls": messages[0].additional_kwargs.get('tool_calls') if did_agent_evoke_a_tool else [],
-                                        "base_message": base_message_as_dict
-                                    })
+                                    # Only send if WebSocket is still open
+                                    if self._is_websocket_open(websocket):
+                                        await websocket.send_json({
+                                            "type": message.type if hasattr(message, 'type') else "ai",
+                                            "content": messages_as_string[0] if messages_as_string else "",
+                                            "tool_calls": tool_calls,
+                                            "base_message": base_message_as_dict
+                                        })
                                 break
                         
                         logger.info(f"LangGraph Output (State Update): {chunk}")
@@ -165,23 +173,32 @@ class RequestHandler:
             del self.locks[ws_id]
 
     def get_workflow_from_langgraph_json(self, message: dict):
-        langgraph_json = json.load(open("../langgraph.json"))
+        # Try different paths for langgraph.json
+        possible_paths = ["../langgraph.json", "../../langgraph.json", "langgraph.json"]
+        langgraph_json = None
+        
+        for path in possible_paths:
+            try:
+                with open(path, 'r') as f:
+                    langgraph_json = json.load(f)
+                    break
+            except FileNotFoundError:
+                continue
+        
+        if langgraph_json is None:
+            raise FileNotFoundError("Could not find the agent from the langgraph.json file")
+        
         langgraph_workflow = langgraph_json.get("graphs").get(message.get("agent_name"))
         return langgraph_workflow
     
     def get_langgraph_app_and_state(self, message: dict):
         app = None
-        state: LlamaBotState = None
+        state = message
         
         if message.get("agent_name") is not None:
             langgraph_workflow = self.get_workflow_from_langgraph_json(message)
             if langgraph_workflow is not None:
                 app = self.get_app_from_workflow_string(langgraph_workflow)
-                state: LlamaBotState = {
-                    "messages":[HumanMessage(content=message.get("message"))],
-                    "api_token":message.get("api_token"),
-                    "agent_instructions":message.get("agent_prompt")
-                }
             else:
                 raise ValueError(f"Unknown workflow: {message.get('agent_name')}")
         
