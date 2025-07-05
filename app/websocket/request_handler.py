@@ -225,8 +225,6 @@ class RequestHandler:
                     if key not in system_routing_fields:
                         state[key] = value
 
-                # breakpoint()
-                        
                 logger.info(f"Created state with keys: {list(state.keys())}")
                 
             else:
