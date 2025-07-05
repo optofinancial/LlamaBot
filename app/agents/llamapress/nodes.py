@@ -31,19 +31,32 @@ def write_html_page(full_html_document: str, message_to_user: str, internal_thou
    internal_thoughts are your thoughts about the command.
    state is the state of the agent.
    """
-   print ("API TOKEN", state.get("api_token")) # empty. only messages is getting passed through.
+   # Debug logging
+   print(f"API TOKEN: {state.get('api_token')}")
+   print(f"Page ID: {state.get('page_id')}")
+   print(f"State keys: {list(state.keys()) if isinstance(state, dict) else 'Not a dict'}")
    
    # Configuration
    RAILS_SERVER_URL = "http://host.docker.internal:3000"
-   breakpoint()
-   API_ENDPOINT = f"{RAILS_SERVER_URL}/pages/{state.get('page_id')}"
+   
+   # Get page_id from state, with fallback
+   page_id = state.get('page_id')
+   if not page_id:
+       return "Error: page_id is required but not provided in state"
+   
+   API_ENDPOINT = f"{RAILS_SERVER_URL}/pages/{page_id}"
 
    try:
+       # Get API token from state
+       api_token = state.get('api_token')
+       if not api_token:
+           return "Error: api_token is required but not provided in state"
+       
        # Make HTTP request to Rails API
        response = requests.put(
            API_ENDPOINT,
            json={'content': full_html_document},
-           headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {state.get("api_token")}'},
+           headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {api_token}'},
            timeout=30  # 30 second timeout
        )
 
@@ -82,7 +95,8 @@ def llamapress(state: LlamaPressState):
    # System message
    sys_msg = SystemMessage(content=f"""You are LlamaPress, a helpful AI assistant.
                         In normal chat conversations, feel free to implement markdown formatting to make your responses more readable, if it's appropriate.
-                        Here are additional instructions provided by the user: <USER_INSTRUCTIONS> {additional_instructions} </USER_INSTRUCTIONS>""")
+                        Here are additional instructions provided by the user: <ADDITIONAL_STATE_AND_CONTEXT> {state} </ADDITIONAL_STATE_AND_CONTEXT> 
+                        <USER_INSTRUCTIONS> {additional_instructions} </USER_INSTRUCTIONS>""")
 
    llm = ChatOpenAI(model="gpt-4o-mini")
    llm_with_tools = llm.bind_tools(tools)
