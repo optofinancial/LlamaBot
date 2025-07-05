@@ -6,7 +6,8 @@ from starlette.websockets import WebSocketState
 from websocket.web_socket_request_context import WebSocketRequestContext
 from typing import Dict, Optional
 
-from langchain.schema import HumanMessage
+from langchain_core.messages import HumanMessage
+from langgraph.graph import MessagesState
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langchain_core.load import dumpd
@@ -21,6 +22,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+from typing import Any, Dict, TypedDict
 
 class RequestHandler:
     def __init__(self, app: FastAPI):
@@ -138,11 +141,16 @@ class RequestHandler:
                 raise e
 
     async def get_chat_history(self, thread_id: str):
-        # websocket_context = WebSocketRequestContext(None, langgraph_checkpointer=get_or_create_checkpointer())
-        app, _ = await self.get_langgraph_app_and_state(None)
-        config = {"configurable": {"thread_id": thread_id}}
-        state_history = await app.aget_state(config=config)
-        return state_history[0] #gets the actual state.
+        # For chat history, we don't need a specific agent, just get any workflow to access the checkpointer
+        # This is a bit of a hack - we should refactor this to not need the workflow for just getting history
+        try:
+            app, _ = self.get_langgraph_app_and_state({"agent_name": "llamabot", "message": "", "api_token": "", "agent_prompt": ""})
+            config = {"configurable": {"thread_id": thread_id}}
+            state_history = await app.aget_state(config=config)
+            return state_history[0] #gets the actual state.
+        except Exception as e:
+            logger.error(f"Error getting chat history: {e}")
+            return None
 
     def get_or_create_checkpointer(self):
         """Get persistent checkpointer, creating once if needed"""
@@ -193,12 +201,34 @@ class RequestHandler:
     
     def get_langgraph_app_and_state(self, message: dict):
         app = None
-        state = message
         
         if message.get("agent_name") is not None:
             langgraph_workflow = self.get_workflow_from_langgraph_json(message)
             if langgraph_workflow is not None:
                 app = self.get_app_from_workflow_string(langgraph_workflow)
+                
+                # Create messages from the message content
+                messages = [HumanMessage(content=message.get("message"))]
+                
+                # Start with the transformed messages field
+                state = {"messages": messages}
+                
+                # Pass through ALL fields except the ones used for system routing
+                system_routing_fields = {
+                    "message",      # We transformed this into messages
+                    "agent_name",   # Used for workflow routing only
+                    "thread_id"     # Used for LangGraph config only
+                }
+                
+                # Pass everything else through naturally
+                for key, value in message.items():
+                    if key not in system_routing_fields:
+                        state[key] = value
+
+                # breakpoint()
+                        
+                logger.info(f"Created state with keys: {list(state.keys())}")
+                
             else:
                 raise ValueError(f"Unknown workflow: {message.get('agent_name')}")
         
