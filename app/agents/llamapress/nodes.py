@@ -45,8 +45,7 @@ def write_html_page(full_html_document: str, message_to_user: str, internal_thou
    if not page_id:
        return "Error: page_id is required but not provided in state"
    
-   API_ENDPOINT = f"{RAILS_SERVER_URL}/pages/{page_id}"
-
+   API_ENDPOINT = f"{RAILS_SERVER_URL}/pages/{page_id}.json"
    try:
        # Get API token from state
        api_token = state.get('api_token')
