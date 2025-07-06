@@ -18,7 +18,7 @@ from typing import Annotated
 # Warning: Brittle - None type will break this when it's injected into the state for the tool call, and it silently fails. So if it doesn't map state types properly from the frontend, it will break. (must be exactly what's defined here).
 class LlamaPressState(MessagesState): 
     api_token: str
-    agent_instructions: str
+    agent_prompt: str
     page_id: str
 
 # Tools
@@ -29,7 +29,6 @@ def write_html_page(full_html_document: str, message_to_user: str, internal_thou
    full_html_document is the full HTML document to write to the filesystem, including CSS and JavaScript.
    message_to_user is a string to tell the user what you're doing.
    internal_thoughts are your thoughts about the command.
-   state is the state of the agent.
    """
    # Debug logging
    print(f"API TOKEN: {state.get('api_token')}")
@@ -37,7 +36,9 @@ def write_html_page(full_html_document: str, message_to_user: str, internal_thou
    print(f"State keys: {list(state.keys()) if isinstance(state, dict) else 'Not a dict'}")
    
    # Configuration
-   RAILS_SERVER_URL = "http://host.docker.internal:3000"
+#    RAILS_SERVER_URL = "http://host.docker.internal:3000"
+   RAILS_SERVER_URL = "http://localhost:3001"
+
    
    # Get page_id from state, with fallback
    page_id = state.get('page_id')
@@ -90,8 +91,7 @@ tools = [write_html_page]
 
 # Node
 def llamapress(state: LlamaPressState):
-   additional_instructions = state.get("agent_instructions")
-
+   additional_instructions = state.get("agent_prompt")
    # System message
    sys_msg = SystemMessage(content=f"""You are LlamaPress, a helpful AI assistant.
                         In normal chat conversations, feel free to implement markdown formatting to make your responses more readable, if it's appropriate.
