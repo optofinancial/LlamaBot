@@ -1,11 +1,13 @@
 from asyncio import Lock, CancelledError
 
 from fastapi import FastAPI, WebSocket
+from starlette.websockets import WebSocketState
 
 from websocket.web_socket_request_context import WebSocketRequestContext
 from typing import Dict, Optional
 
-from langchain.schema import HumanMessage
+from langchain_core.messages import HumanMessage
+from langgraph.graph import MessagesState
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langchain_core.load import dumpd
@@ -17,15 +19,11 @@ import importlib
 import os
 import logging
 
-#This is an example of a custom state object for a custom agent.
-from agents.llamapress_legacy.state import LlamaPressMessage
-from agents.llamabot_v1.nodes import LlamaBotState
-
-# from llm.websocket.websocket_helper import send_json_through_websocket
-# from llm.workflows.nodes import build_workflow, build_workflow_saas
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+from typing import Any, Dict, TypedDict
 
 class RequestHandler:
     def __init__(self, app: FastAPI):
@@ -38,6 +36,10 @@ class RequestHandler:
         if ws_id not in self.locks:
             self.locks[ws_id] = Lock()
         return self.locks[ws_id]
+
+    def _is_websocket_open(self, websocket: WebSocket) -> bool:
+        """Check if the WebSocket connection is still open"""
+        return websocket.client_state == WebSocketState.CONNECTED
 
     async def handle_request(self, message: dict, websocket: WebSocket):
         """Handle incoming WebSocket requests with proper locking and cancellation"""
@@ -52,6 +54,7 @@ class RequestHandler:
                         "thread_id": f"{message.get('thread_id')}"
                     }
                 } 
+
                 async for chunk in app.astream(state, config=config, stream_mode=["updates", "messages"]):
                     is_this_chunk_an_llm_message = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'messages'
                     is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'updates'
@@ -70,27 +73,44 @@ class RequestHandler:
                             if did_agent_have_a_message_for_us:
                                 messages = agent_data['messages'] #Question: is this ALL messages coming through, or just the latest AI message?
 
-                                did_agent_evoke_a_tool = messages[0].additional_kwargs.get('tool_calls') is not None
-                                if did_agent_evoke_a_tool:
-                                    tool_call_object = messages[0].additional_kwargs.get('tool_calls')[0] # => {'name': 'run_rails_console_command', 'args': {'rails_console_command': 'Rails.application.credentials.twilio'}, 'id': 'call_QDZ8FhEf8qzbGpGASD3KaCDm', 'type': 'tool_call'}
-                                    tool_call_name = tool_call_object.get("name")
-                                    tool_call_args = tool_call_object.get("args")
-                                    logger.info(f"🔨🔨🔨 Tool Call Name: {tool_call_name}")
-                                    logger.info(f"🔨🔨🔨 Tool Call Args: {tool_call_args}")
+                                # Safe check for tool calls with better error handling
+                                did_agent_evoke_a_tool = False
+                                tool_calls = []
+                                
+                                if messages and len(messages) > 0:
+                                    message = messages[0]
+                                    if hasattr(message, 'additional_kwargs') and message.additional_kwargs:
+                                        tool_calls_data = message.additional_kwargs.get('tool_calls')
+                                        if tool_calls_data:
+                                            did_agent_evoke_a_tool = True
+                                            tool_calls = tool_calls_data
+                                            
+                                            # Log tool call details
+                                            if len(tool_calls) > 0:
+                                                tool_call_object = tool_calls[0]
+                                                tool_call_name = tool_call_object.get("name")
+                                                tool_call_args = tool_call_object.get("args")
+                                                logger.info(f"🔨🔨🔨 Tool Call Name: {tool_call_name}")
+                                                logger.info(f"🔨🔨🔨 Tool Call Args: {tool_call_args}")
 
-                                # AIMessage is not serializable to JSON, so we need to convert it to a string.
-                                messages_as_string = [message.content for message in messages]
+                                    # AIMessage is not serializable to JSON, so we need to convert it to a string.
+                                    messages_as_string = [msg.content if hasattr(msg, 'content') else str(msg) for msg in messages]
 
-                                #NOTE: I found we're able to serialize AIMessage into dict using dumpd.
+                                    #NOTE: I found we're able to serialize AIMessage into dict using dumpd.
+                                    try:
+                                        base_message_as_dict = dumpd(message)["kwargs"]
+                                    except Exception as e:
+                                        logger.warning(f"Failed to serialize message: {e}")
+                                        base_message_as_dict = {"content": str(message), "type": "ai"}
 
-                                base_message_as_dict = dumpd(messages[0])["kwargs"]
-
-                                await websocket.send_json({
-                                    "type": messages[0].type, #matches our langgraph streaming type.
-                                    "content": messages_as_string[0],
-                                    "tool_calls": messages[0].additional_kwargs.get('tool_calls') if did_agent_evoke_a_tool else [],
-                                    "base_message": base_message_as_dict
-                                })
+                                    # Only send if WebSocket is still open
+                                    if self._is_websocket_open(websocket):
+                                        await websocket.send_json({
+                                            "type": message.type if hasattr(message, 'type') else "ai",
+                                            "content": messages_as_string[0] if messages_as_string else "",
+                                            "tool_calls": tool_calls,
+                                            "base_message": base_message_as_dict
+                                        })
                                 break
                         
                         logger.info(f"LangGraph Output (State Update): {chunk}")
@@ -103,25 +123,34 @@ class RequestHandler:
 
             except CancelledError as e:
                 logger.info("handle_request was cancelled")
-                await websocket.send_json({
-                    "type": "error",
-                    "content": f"Cancelled!"
-                })
+                # Only send error message if WebSocket is still open
+                if self._is_websocket_open(websocket):
+                    await websocket.send_json({
+                        "type": "error",
+                        "content": f"Cancelled!"
+                    })
                 raise e
             except Exception as e:
                 logger.error(f"Error handling request: {str(e)}", exc_info=True)
-                await websocket.send_json({
-                    "type": "error",
-                    "content": f"Error processing request: {str(e)}"
-                })
+                # Only send error message if WebSocket is still open
+                if self._is_websocket_open(websocket):
+                    await websocket.send_json({
+                        "type": "error",
+                        "content": f"Error processing request: {str(e)}"
+                    })
                 raise e
 
     async def get_chat_history(self, thread_id: str):
-        # websocket_context = WebSocketRequestContext(None, langgraph_checkpointer=get_or_create_checkpointer())
-        app, _ = await self.get_langgraph_app_and_state(None)
-        config = {"configurable": {"thread_id": thread_id}}
-        state_history = await app.aget_state(config=config)
-        return state_history[0] #gets the actual state.
+        # For chat history, we don't need a specific agent, just get any workflow to access the checkpointer
+        # This is a bit of a hack - we should refactor this to not need the workflow for just getting history
+        try:
+            app, _ = self.get_langgraph_app_and_state({"agent_name": "llamabot", "message": "", "api_token": "", "agent_prompt": ""})
+            config = {"configurable": {"thread_id": thread_id}}
+            state_history = await app.aget_state(config=config)
+            return state_history[0] #gets the actual state.
+        except Exception as e:
+            logger.error(f"Error getting chat history: {e}")
+            return None
 
     def get_or_create_checkpointer(self):
         """Get persistent checkpointer, creating once if needed"""
@@ -152,23 +181,52 @@ class RequestHandler:
             del self.locks[ws_id]
 
     def get_workflow_from_langgraph_json(self, message: dict):
-        langgraph_json = json.load(open("../langgraph.json"))
+        # Try different paths for langgraph.json
+        possible_paths = ["../langgraph.json", "../../langgraph.json", "langgraph.json"]
+        langgraph_json = None
+        
+        for path in possible_paths:
+            try:
+                with open(path, 'r') as f:
+                    langgraph_json = json.load(f)
+                    break
+            except FileNotFoundError:
+                continue
+        
+        if langgraph_json is None:
+            raise FileNotFoundError("Could not find the agent from the langgraph.json file")
+        
         langgraph_workflow = langgraph_json.get("graphs").get(message.get("agent_name"))
         return langgraph_workflow
     
     def get_langgraph_app_and_state(self, message: dict):
         app = None
-        state: LlamaBotState = None
-        
+        state = message
         if message.get("agent_name") is not None:
             langgraph_workflow = self.get_workflow_from_langgraph_json(message)
             if langgraph_workflow is not None:
                 app = self.get_app_from_workflow_string(langgraph_workflow)
-                state: LlamaBotState = {
-                    "messages":[HumanMessage(content=message.get("message"))],
-                    "api_token":message.get("api_token"),
-                    "agent_instructions":message.get("agent_prompt")
+                
+                # Create messages from the message content
+                messages = [HumanMessage(content=message.get("message"))]
+                
+                # Start with the transformed messages field
+                state = {"messages": messages}
+                
+                # Pass through ALL fields except the ones used for system routingError processing request: cannot access local variable 'state' where it is not associated with a value
+                system_routing_fields = {
+                    "message",      # We transformed this into messages
+                    "agent_name",   # Used for workflow routing only
+                    "thread_id"     # Used for LangGraph config only
                 }
+                
+                # Pass everything else through naturally
+                for key, value in message.items():
+                    if key not in system_routing_fields:
+                        state[key] = value
+
+                logger.info(f"Created state with keys: {list(state.keys())}")
+                
             else:
                 raise ValueError(f"Unknown workflow: {message.get('agent_name')}")
         

@@ -1,4 +1,5 @@
 from fastapi import WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 import asyncio
 
 import os
@@ -6,17 +7,28 @@ import logging
 import time
 import json
 
-from agents.llamapress_legacy.state import LlamaPressMessage
+from pydantic import BaseModel
+
 from websocket.web_socket_connection_manager import WebSocketConnectionManager
 from websocket.request_handler import RequestHandler
 
 logger = logging.getLogger(__name__)
+
+# Pydantic model for chat request
+class ChatMessage(dict):
+    message: str
+    thread_id: str = None  # Optional thread_id parameter
+    agent: str = None  # Optional agent parameter
 
 class WebSocketHandler:
     def __init__(self, websocket: WebSocket, manager: WebSocketConnectionManager):
         self.websocket = websocket
         self.manager = manager
         self.request_handler = RequestHandler(manager.app)
+
+    def _is_websocket_open(self, websocket: WebSocket) -> bool:
+        """Check if the WebSocket connection is still open"""
+        return websocket.client_state == WebSocketState.CONNECTED
 
     async def handle_websocket(self):
         logger.info(f"New WebSocket connection attempt from {self.websocket.client}")
@@ -48,10 +60,12 @@ class WebSocketHandler:
                         logger.info("CANCEL RECV")
                         if current_task and not current_task.done(): 
                             current_task.cancel()
-                            await self.manager.send_personal_message({
-                                "type": "system_message",
-                                "content": "Previous task has been cancelled"
-                            }, self.websocket)
+                            # Only send if WebSocket is still open
+                            if self._is_websocket_open(self.websocket):
+                                await self.manager.send_personal_message({
+                                    "type": "system_message",
+                                    "content": "Previous task has been cancelled"
+                                }, self.websocket)
                         continue
 
                     # Cancel previous task if it exists and create new one
@@ -63,7 +77,7 @@ class WebSocketHandler:
                         except asyncio.CancelledError:
                             logger.info("Previous task was cancelled successfully")
 
-                    message = LlamaPressMessage(**json_data)
+                    message = ChatMessage(**json_data)
 
                     logger.info(f"Received message: {message}")
                     current_task = asyncio.create_task(
@@ -74,16 +88,20 @@ class WebSocketHandler:
                     break
                 except Exception as e:
                     logger.error(f"WebSocket error: {str(e)}")
-                    await self.manager.send_personal_message({
-                        "type": "error",
-                        "content": f"Error 80: {str(e)}"
-                    }, self.websocket)
+                    # Only send error message if WebSocket is still open
+                    if self._is_websocket_open(self.websocket):
+                        await self.manager.send_personal_message({
+                            "type": "error",
+                            "content": f"Error 80: {str(e)}"
+                        }, self.websocket)
         except Exception as e:
             logger.error(f"WebSocket error: {str(e)}")
-            await self.manager.send_personal_message({
-                "type": "error",
-                "content": f"Error 253: {str(e)}"
-            }, self.websocket)
+            # Only send error message if WebSocket is still open
+            if self._is_websocket_open(self.websocket):
+                await self.manager.send_personal_message({
+                    "type": "error",
+                    "content": f"Error 253: {str(e)}"
+                }, self.websocket)
         finally:
             if current_task and not current_task.done():
                 current_task.cancel()

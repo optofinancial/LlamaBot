@@ -104,14 +104,15 @@ end
 
 ```
 LlamaBot/
-├── backend/
-│   ├── app.py             # FastAPI app with WebSocket + API routes
+├── app/
+│   ├── main.py            # FastAPI app with WebSocket + API routes
 │   ├── chat.html          # Chat interface UI
 │   ├── page.html          # Rendered result display
 │   ├── agents/            # LangGraph agent logic
 │   └── ...                # Utility code, workflows, memory, etc.
-├── Dockerfile             # To run the backend agent anywhere
-├── requirements.txt       # Python deps
+├── Dockerfile             # Container definition to run the backend anywhere
+├── requirements.txt       # Python dependencies
+├── fly.toml               # Fly.io deployment config
 └── README.md
 ```
 
@@ -125,12 +126,24 @@ git clone https://github.com/KodyKendall/LlamaBot.git
 cd LlamaBot/backend
 python -m venv venv && source venv/bin/activate
 pip install -r ../requirements.txt
-uvicorn app:app --reload
+uvicorn main:app --reload
 ```
 
 Browse to: [http://localhost:8000/chat](http://localhost:8000/chat)
 
 ---
+
+## 🚀 One-click Deploy to Fly.io
+
+1. Install [flyctl](https://fly.io/docs/hands-on/install-flyctl/)
+2. Clone this repo
+3. Run:
+
+```bash
+fly launch --no-deploy
+fly deploy
+fly secrets set OPENAI_API_KEY=sk-...
+```
 
 ## 🤝 Contributing
 

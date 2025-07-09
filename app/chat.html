@@ -293,7 +293,7 @@
         </div>
     </div>
     <div class="iframe-section">
-        <iframe src="http://localhost:8000/page" title="Content Frame"></iframe>
+        <iframe src="/page" title="Content Frame"></iframe>
     </div>
 
     <script>
@@ -383,7 +383,7 @@
                 
                 try {
                     // Set up fetch for streaming
-                    const response = await fetch('http://localhost:8000/chat-message', {
+                    const response = await fetch('/chat-message', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',

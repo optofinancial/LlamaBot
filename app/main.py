@@ -31,6 +31,7 @@ from agents.react_agent.nodes import build_workflow
 from agents.llamabot_v1.nodes import build_workflow as build_workflow_llamabot_v1
 from websocket.web_socket_connection_manager import WebSocketConnectionManager
 from websocket.web_socket_handler import WebSocketHandler
+from websocket.request_handler import RequestHandler
 
 # Configure logging
 logging.basicConfig(
@@ -140,6 +141,11 @@ def get_or_create_async_checkpointer():
             app.state.async_checkpointer = MemorySaver()
     
     return app.state.async_checkpointer
+
+def get_langgraph_app_and_state_helper(message: dict):
+    """Helper function to access RequestHandler.get_langgraph_app_and_state from main.py"""
+    request_handler = RequestHandler(app)
+    return request_handler.get_langgraph_app_and_state(message)
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -282,25 +288,14 @@ async def llamabot_chat_message(chat_message: dict): #NOTE: This could be arbitr
             
             checkpointer = get_or_create_async_checkpointer()
             agent_name = chat_message.get("agent_name")
-            graph = build_workflow_llamabot_v1(checkpointer=checkpointer)
+            graph, state = get_langgraph_app_and_state_helper(chat_message)
 
             #TODO: Depending on the agent, the state will be different. This state needs to mirror the Rails AgentStateBuilder shape for this associated agent.
-            stream = graph.astream({
-                "messages": [HumanMessage(content=chat_message.get("message"))],
-                "initial_user_message": chat_message.get("message"),
-                "api_token": chat_message.get("api_token"),
-                "agent_instructions": chat_message.get("agent_prompt"),
-                },
+            stream = graph.astream(state,
                 config={"configurable": {"thread_id": thread_id}},
                 stream_mode=["updates"]#, "messages"] # "values" is the third option ( to return the entire state object )
             )
 
-            # Send SSE start event
-            # yield f"data: {json.dumps({
-            #     'type': 'start',
-            #     'content': 'start',
-            #     'request_id': request_id
-            # })}\n\n"
 
             yield json.dumps({ #tell the front-end that we're starting the stream.
                 "type": "start",
