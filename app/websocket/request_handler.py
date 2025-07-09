@@ -201,7 +201,7 @@ class RequestHandler:
     
     def get_langgraph_app_and_state(self, message: dict):
         app = None
-        
+        state = message
         if message.get("agent_name") is not None:
             langgraph_workflow = self.get_workflow_from_langgraph_json(message)
             if langgraph_workflow is not None:
@@ -213,7 +213,7 @@ class RequestHandler:
                 # Start with the transformed messages field
                 state = {"messages": messages}
                 
-                # Pass through ALL fields except the ones used for system routing
+                # Pass through ALL fields except the ones used for system routingError processing request: cannot access local variable 'state' where it is not associated with a value
                 system_routing_fields = {
                     "message",      # We transformed this into messages
                     "agent_name",   # Used for workflow routing only

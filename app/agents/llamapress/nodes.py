@@ -2,6 +2,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from dotenv import load_dotenv
 from functools import partial
+from typing import Optional
+
 load_dotenv()
 
 from langgraph.graph import MessagesState
@@ -20,10 +22,13 @@ class LlamaPressState(MessagesState):
     api_token: str
     agent_prompt: str
     page_id: str
+    current_page_html: str
+    selected_element: Optional[str]
+    javascript_console_errors: Optional[str]
 
 # Tools
 @tool
-def write_html_page(full_html_document: str, message_to_user: str, internal_thoughts: str, state: Annotated[LlamaPressState, InjectedState]) -> str:
+def write_html_page(full_html_document: str, message_to_user: str, internal_thoughts: str, state: Annotated[dict, InjectedState]) -> str:
    """
    Write an HTML page to the filesystem.
    full_html_document is the full HTML document to write to the filesystem, including CSS and JavaScript.
@@ -37,7 +42,7 @@ def write_html_page(full_html_document: str, message_to_user: str, internal_thou
    
    # Configuration
 #    RAILS_SERVER_URL = "http://host.docker.internal:3000"
-   RAILS_SERVER_URL = "http://localhost:3001"
+   RAILS_SERVER_URL = "http://127.0.0.1:3000"
 
    
    # Get page_id from state, with fallback
@@ -97,7 +102,7 @@ def llamapress(state: LlamaPressState):
                         Here are additional instructions provided by the user: <ADDITIONAL_STATE_AND_CONTEXT> {state} </ADDITIONAL_STATE_AND_CONTEXT> 
                         <USER_INSTRUCTIONS> {additional_instructions} </USER_INSTRUCTIONS>""")
 
-   llm = ChatOpenAI(model="gpt-4o-mini")
+   llm = ChatOpenAI(model="o4-mini")
    llm_with_tools = llm.bind_tools(tools)
    return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])]}
 
