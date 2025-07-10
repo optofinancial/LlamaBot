@@ -29,7 +29,6 @@ services:
 volumes:
   postgres_data:
 
-# external network declaration
 networks:
   shared-net:
-    external: true
+    name: lenny-the-llama-network
