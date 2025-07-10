@@ -13,6 +13,8 @@ db_uri = os.getenv("DB_URI")
 if db_uri is None:
     print("DB_URI is not set, we'll use InMemoryCheckpointer instead!")
 else: 
+    print("DB_URI is set, we'll use PostgresSaver instead!")
+    print("DB_URI: ", db_uri)
 
     # Create connection pool
     # pool = ConnectionPool(db_uri)
