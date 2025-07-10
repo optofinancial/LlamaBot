@@ -20,5 +20,4 @@ ENV DB_URI=""
 # Expose port
 EXPOSE 8000
 
-# CMD ["bash", "-c", "python init_pg_checkpointer.py --uri $POSTGRES_URI_CUSTOM && uvicorn app:app --host 0.0.0.0 --port 8000"]
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["bash", "-c", "if [ ! -z \"$DB_URI\" ]; then python init_pg_checkpointer.py; fi && uvicorn main:app --host 0.0.0.0 --port 8000"]
