@@ -1,4 +1,5 @@
 version: "3.8"
+
 services:
   app:
     build: .
@@ -8,10 +9,10 @@ services:
       - .env
     depends_on:
       - db
-    # The following command is from the Dockerfile, and will initialize the database if needed.
-    # It assumes that init_pg_checkpointer.py is in the /app/app directory in the container.
     command: >
       bash -c "python init_pg_checkpointer.py --uri $$DB_URI && uvicorn main:app --host 0.0.0.0 --port 8000"
+    networks:
+      - shared-net   # <-- only the app goes on shared-net
 
   db:
     image: postgres:16
@@ -23,6 +24,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # no networks: → db stays on the project’s default network
 
 volumes:
-  postgres_data: 
+  postgres_data:
+
+# external network declaration
+networks:
+  shared-net:
+    external: true
