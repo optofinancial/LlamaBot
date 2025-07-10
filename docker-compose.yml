@@ -12,7 +12,7 @@ services:
     command: >
       bash -c "python init_pg_checkpointer.py --uri $$DB_URI && uvicorn main:app --host 0.0.0.0 --port 8000"
     networks:
-      - shared-net   # <-- only the app goes on shared-net
+      - llama-network   # <-- only the app goes on shared-net
 
   db:
     image: postgres:16
@@ -30,5 +30,5 @@ volumes:
   postgres_data:
 
 networks:
-  shared-net:
-    name: lenny-the-llama-network
+  llama-network:
+    name: llama-network
