@@ -3,6 +3,7 @@ from langchain_core.tools import tool
 from dotenv import load_dotenv
 from functools import partial
 from typing import Optional
+import os
 
 load_dotenv()
 
@@ -41,8 +42,7 @@ def write_html_page(full_html_document: str, message_to_user: str, internal_thou
    print(f"State keys: {list(state.keys()) if isinstance(state, dict) else 'Not a dict'}")
    
    # Configuration
-#    RAILS_SERVER_URL = "http://host.docker.internal:3000"
-   RAILS_SERVER_URL = "http://127.0.0.1:3000"
+   LLAMAPRESS_API_URL = os.getenv("LLAMAPRESS_API_URL")
 
    
    # Get page_id from state, with fallback
@@ -50,7 +50,7 @@ def write_html_page(full_html_document: str, message_to_user: str, internal_thou
    if not page_id:
        return "Error: page_id is required but not provided in state"
    
-   API_ENDPOINT = f"{RAILS_SERVER_URL}/pages/{page_id}.json"
+   API_ENDPOINT = f"{LLAMAPRESS_API_URL}/pages/{page_id}.json"
    try:
        # Get API token from state
        api_token = state.get('api_token')
