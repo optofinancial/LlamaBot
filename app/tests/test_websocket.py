@@ -6,6 +6,7 @@ import json
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from fastapi import WebSocketDisconnect
+from starlette.websockets import WebSocketState
 from websockets.exceptions import ConnectionClosed
 
 from websocket.web_socket_connection_manager import WebSocketConnectionManager
@@ -61,6 +62,7 @@ class TestWebSocketConnectionManager:
         
         mock_websocket = AsyncMock()
         mock_websocket.send_text = AsyncMock()
+        mock_websocket.client_state = WebSocketState.CONNECTED
         
         test_message = "Hello, personal message!"
         await manager.send_personal_message(test_message, mock_websocket)
@@ -76,8 +78,10 @@ class TestWebSocketConnectionManager:
         # Create multiple mock WebSockets
         mock_ws1 = AsyncMock()
         mock_ws1.send_json = AsyncMock()
+        mock_ws1.client_state = WebSocketState.CONNECTED
         mock_ws2 = AsyncMock()
         mock_ws2.send_json = AsyncMock()
+        mock_ws2.client_state = WebSocketState.CONNECTED
         
         manager.active_connections = [mock_ws1, mock_ws2]
         
@@ -97,16 +101,30 @@ class TestWebSocketConnectionManager:
         # Create mock WebSockets, one that will fail
         mock_ws1 = AsyncMock()
         mock_ws1.send_json = AsyncMock()
+        mock_ws1.client_state = WebSocketState.CONNECTED
         mock_ws2 = AsyncMock()
         mock_ws2.send_json = AsyncMock(side_effect=ConnectionClosed(None, None))
+        mock_ws2.client_state = WebSocketState.CONNECTED
         
+        # Properly set up the manager's tracking
         manager.active_connections = [mock_ws1, mock_ws2]
+        manager._connection_ids.add(id(mock_ws1))
+        manager._connection_ids.add(id(mock_ws2))
         
         test_message = "Broadcast with failure"
         
-        # The implementation doesn't handle exceptions in broadcast, so this will raise
-        with pytest.raises(ConnectionClosed):
-            await manager.broadcast(test_message)
+        # The implementation handles exceptions in broadcast, so this won't raise
+        # The failing connection will be removed from active_connections
+        await manager.broadcast(test_message)
+        
+        # The first websocket should have been called
+        mock_ws1.send_json.assert_called_once_with({"message": test_message})
+        # The second websocket should have been called but failed
+        mock_ws2.send_json.assert_called_once_with({"message": test_message})
+        
+        # The failed connection should be removed from active_connections
+        assert mock_ws2 not in manager.active_connections
+        assert mock_ws1 in manager.active_connections
 
 
 class TestWebSocketHandler:
@@ -171,7 +189,7 @@ class TestWebSocketIntegration:
     @pytest.mark.asyncio
     async def test_websocket_endpoint_integration(self):
         """Test the WebSocket endpoint integration."""
-        from app import app
+        from main import app
         
         client = TestClient(app)
         
@@ -199,7 +217,7 @@ class TestWebSocketIntegration:
     @pytest.mark.asyncio
     async def test_websocket_multiple_connections(self):
         """Test multiple WebSocket connections."""
-        from app import app
+        from main import app
         
         client = TestClient(app)
         

@@ -175,7 +175,7 @@ class TestWebSocketIntegration:
     
     def test_websocket_complete_flow(self):
         """Test complete WebSocket flow."""
-        from app import app
+        from main import app
         client = TestClient(app)
         
         with client.websocket_connect("/ws") as websocket:

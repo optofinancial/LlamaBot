@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from app import app, manager
+from main import app, manager
 from langgraph.checkpoint.memory import MemorySaver
 
 
@@ -111,7 +111,7 @@ def setup_test_environment():
     os.environ["OPENAI_API_KEY"] = "test_openai_key"
     
     # Mock the checkpointer to avoid database connections during tests
-    with patch('app.get_or_create_checkpointer') as mock_checkpointer:
+    with patch('main.get_or_create_checkpointer') as mock_checkpointer:
         mock_checkpointer.return_value = MemorySaver()
         yield
 
@@ -129,7 +129,7 @@ def mock_database():
 @pytest.fixture
 def mock_build_workflow():
     """Mock build_workflow function for testing."""
-    with patch('app.build_workflow') as mock:
+    with patch('main.build_workflow') as mock:
         workflow = MagicMock()
         workflow.stream = MagicMock(return_value=iter([]))
         workflow.get_state = MagicMock(return_value={"messages": []})
