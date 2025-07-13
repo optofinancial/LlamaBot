@@ -5,7 +5,7 @@ import pytest
 import json
 from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
-from app import app, ChatMessage
+from main import app, ChatMessage
 
 
 class TestMainEndpoints:
@@ -150,7 +150,7 @@ class TestThreadsAndHistory:
         mock_workflow = mock_build_workflow.return_value
         mock_workflow.get_state.return_value = {"messages": []}
         
-        with patch("app.get_or_create_checkpointer") as mock_checkpointer:
+        with patch("main.get_or_create_checkpointer") as mock_checkpointer:
             mock_checkpointer.return_value.list.return_value = iter(mock_checkpoints)
             
             response = await async_client.get("/threads")

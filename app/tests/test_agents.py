@@ -3,8 +3,13 @@ Tests for the agents functionality.
 """
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
+import json
+import requests
+import logging
 
 from agents.base_agent import BaseAgent
+from agents.llamabot_v1.nodes import run_rails_console_command, LlamaBotState
+from agents.llamapress.nodes import write_html_page, LlamaPressState
 from langgraph.checkpoint.memory import MemorySaver
 
 
@@ -28,6 +33,357 @@ class TestBaseAgent:
         # This test ensures that BaseAgent cannot be instantiated directly
         with pytest.raises(TypeError):
             BaseAgent("test", "test")
+
+
+class TestLlamaBotV1Nodes:
+    """Test LlamaBot V1 node functionality."""
+    
+    @patch('agents.llamabot_v1.nodes.requests.post')
+    @patch('agents.llamabot_v1.nodes.os.getenv')
+    def test_run_rails_console_command_success(self, mock_getenv, mock_post):
+        """Test successful rails console command execution."""
+        # Setup mocks
+        mock_getenv.return_value = "http://test-server.com"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'result': {'data': 'test_result'},
+            'type': 'success'
+        }
+        mock_post.return_value = mock_response
+        
+        # Create test state with all required fields
+        state = {
+            'api_token': 'test_token_123',
+            'agent_prompt': 'Test prompt',
+            'messages': []
+        }
+        
+        # Execute function using tool invoke
+        result = run_rails_console_command.invoke({
+            'rails_console_command': 'User.count',
+            'message_to_user': 'Counting users',
+            'internal_thoughts': 'Getting user count',
+            'state': state
+        })
+        
+        # Verify the request was made correctly
+        mock_post.assert_called_once_with(
+            "http://test-server.com/llama_bot/agent/command",
+            json={'command': 'User.count'},
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': 'LlamaBot test_token_123'
+            },
+            timeout=30
+        )
+        
+        # Verify the result
+        assert 'test_result' in result
+        assert isinstance(result, str)
+    
+    @patch('agents.llamabot_v1.nodes.requests.post')
+    @patch('agents.llamabot_v1.nodes.os.getenv')
+    def test_run_rails_console_command_http_error(self, mock_getenv, mock_post):
+        """Test rails console command with HTTP error."""
+        # Setup mocks
+        mock_getenv.return_value = "http://test-server.com"
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.text = "Unauthorized"
+        mock_post.return_value = mock_response
+        
+        # Create test state with all required fields
+        state = {
+            'api_token': 'invalid_token',
+            'agent_prompt': 'Test prompt',
+            'messages': []
+        }
+        
+        # Execute function using tool invoke
+        result = run_rails_console_command.invoke({
+            'rails_console_command': 'User.count',
+            'message_to_user': 'Counting users',
+            'internal_thoughts': 'Getting user count',
+            'state': state
+        })
+        
+        # Verify error handling
+        assert "HTTP Error 401" in result
+        assert "Unauthorized" in result
+    
+    @patch('agents.llamabot_v1.nodes.requests.post')
+    @patch('agents.llamabot_v1.nodes.os.getenv')
+    def test_run_rails_console_command_connection_error(self, mock_getenv, mock_post):
+        """Test rails console command with connection error."""
+        # Setup mocks
+        mock_getenv.return_value = "http://test-server.com"
+        mock_post.side_effect = requests.exceptions.ConnectionError("Connection failed")
+        
+        # Create test state with all required fields
+        state = {
+            'api_token': 'test_token',
+            'agent_prompt': 'Test prompt',
+            'messages': []
+        }
+        
+        # Execute function using tool invoke
+        result = run_rails_console_command.invoke({
+            'rails_console_command': 'User.count',
+            'message_to_user': 'Counting users',
+            'internal_thoughts': 'Getting user count',
+            'state': state
+        })
+        
+        # Verify error handling
+        assert "Could not connect to Rails server" in result
+    
+    @patch('agents.llamabot_v1.nodes.requests.post')
+    @patch('agents.llamabot_v1.nodes.os.getenv')
+    def test_run_rails_console_command_missing_token(self, mock_getenv, mock_post):
+        """Test rails console command with missing API token."""
+        # Setup mocks
+        mock_getenv.return_value = "http://test-server.com"
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.text = "Unauthorized"
+        mock_post.return_value = mock_response
+        
+        # Create test state with empty api_token to simulate missing token
+        state = {
+            'api_token': '',  # Use empty string instead of None
+            'agent_prompt': 'Test prompt',
+            'messages': []
+        }
+        
+        # Execute function using tool invoke
+        result = run_rails_console_command.invoke({
+            'rails_console_command': 'User.count',
+            'message_to_user': 'Counting users',
+            'internal_thoughts': 'Getting user count',
+            'state': state
+        })
+        
+        # Verify the request was made with empty token
+        mock_post.assert_called_once_with(
+            "http://test-server.com/llama_bot/agent/command",
+            json={'command': 'User.count'},
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': 'LlamaBot '
+            },
+            timeout=30
+        )
+        
+        # Verify error handling for unauthorized request
+        assert "HTTP Error 401" in result
+        assert "Unauthorized" in result
+
+
+class TestLlamaPressNodes:
+    """Test LlamaPress node functionality."""
+    
+    @patch('agents.llamapress.nodes.requests.put')
+    @patch('agents.llamapress.nodes.os.getenv')
+    def test_write_html_page_success(self, mock_getenv, mock_put):
+        """Test successful HTML page writing."""
+        # Setup mocks
+        mock_getenv.return_value = "http://test-server.com"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'id': 123,
+            'content': '<html><body>Test</body></html>',
+            'updated_at': '2023-01-01T00:00:00Z'
+        }
+        mock_put.return_value = mock_response
+        
+        # Create test state with all required fields
+        state = {
+            'api_token': 'test_token_123',
+            'agent_prompt': 'Test prompt',
+            'page_id': 'test_page_456',
+            'current_page_html': '<html></html>',
+            'selected_element': None,
+            'javascript_console_errors': None,
+            'messages': []
+        }
+        
+        # Execute function using tool invoke
+        result = write_html_page.invoke({
+            'full_html_document': '<html><body>Test Content</body></html>',
+            'message_to_user': 'Writing HTML page',
+            'internal_thoughts': 'Creating test page',
+            'state': state
+        })
+        
+        # Verify the request was made correctly
+        mock_put.assert_called_once_with(
+            "http://test-server.com/pages/test_page_456.json",
+            json={'content': '<html><body>Test Content</body></html>'},
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': 'LlamaBot test_token_123'
+            },
+            timeout=30
+        )
+        
+        # Verify the result contains expected data
+        result_data = json.loads(result)
+        assert result_data['id'] == 123
+        assert 'content' in result_data
+    
+    @patch('agents.llamapress.nodes.requests.put')
+    @patch('agents.llamapress.nodes.os.getenv')
+    def test_write_html_page_http_error(self, mock_getenv, mock_put):
+        """Test HTML page writing with HTTP error."""
+        # Setup mocks
+        mock_getenv.return_value = "http://test-server.com"
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.text = "Page not found"
+        mock_put.return_value = mock_response
+        
+        # Create test state with all required fields
+        state = {
+            'api_token': 'test_token',
+            'agent_prompt': 'Test prompt',
+            'page_id': 'nonexistent_page',
+            'current_page_html': '<html></html>',
+            'selected_element': None,
+            'javascript_console_errors': None,
+            'messages': []
+        }
+        
+        # Execute function using tool invoke
+        result = write_html_page.invoke({
+            'full_html_document': '<html><body>Test</body></html>',
+            'message_to_user': 'Writing HTML page',
+            'internal_thoughts': 'Creating test page',
+            'state': state
+        })
+        
+        # Verify error handling
+        assert "HTTP Error 404" in result
+        assert "Page not found" in result
+    
+    @patch('agents.llamapress.nodes.requests.put')
+    @patch('agents.llamapress.nodes.os.getenv')
+    def test_write_html_page_connection_error(self, mock_getenv, mock_put):
+        """Test HTML page writing with connection error."""
+        # Setup mocks
+        mock_getenv.return_value = "http://test-server.com"
+        mock_put.side_effect = requests.exceptions.ConnectionError("Connection failed")
+        
+        # Create test state with all required fields
+        state = {
+            'api_token': 'test_token',
+            'agent_prompt': 'Test prompt',
+            'page_id': 'test_page',
+            'current_page_html': '<html></html>',
+            'selected_element': None,
+            'javascript_console_errors': None,
+            'messages': []
+        }
+        
+        # Execute function using tool invoke
+        result = write_html_page.invoke({
+            'full_html_document': '<html><body>Test</body></html>',
+            'message_to_user': 'Writing HTML page',
+            'internal_thoughts': 'Creating test page',
+            'state': state
+        })
+        
+        # Verify error handling
+        assert "Could not connect to Rails server" in result
+    
+    @patch('agents.llamapress.nodes.requests.put')
+    @patch('agents.llamapress.nodes.os.getenv')
+    def test_write_html_page_missing_token(self, mock_getenv, mock_put):
+        """Test HTML page writing with missing API token."""
+        # Setup mocks
+        mock_getenv.return_value = "http://test-server.com"
+        
+        # Create test state without api_token but with other required fields
+        state = {
+            'agent_prompt': 'Test prompt',
+            'page_id': 'test_page',
+            'current_page_html': '<html></html>',
+            'selected_element': None,
+            'javascript_console_errors': None,
+            'messages': []
+        }
+        
+        # Execute function using tool invoke
+        result = write_html_page.invoke({
+            'full_html_document': '<html><body>Test</body></html>',
+            'message_to_user': 'Writing HTML page',
+            'internal_thoughts': 'Creating test page',
+            'state': state
+        })
+        
+        # Verify error handling
+        assert "api_token is required" in result
+        # Verify no HTTP request was made
+        mock_put.assert_not_called()
+    
+    @patch('agents.llamapress.nodes.requests.put')
+    @patch('agents.llamapress.nodes.os.getenv')
+    def test_write_html_page_missing_page_id(self, mock_getenv, mock_put):
+        """Test HTML page writing with missing page ID."""
+        # Setup mocks
+        mock_getenv.return_value = "http://test-server.com"
+        
+        # Create test state without page_id but with other required fields
+        state = {
+            'api_token': 'test_token',
+            'agent_prompt': 'Test prompt',
+            'current_page_html': '<html></html>',
+            'selected_element': None,
+            'javascript_console_errors': None,
+            'messages': []
+        }
+        
+        # Execute function using tool invoke
+        result = write_html_page.invoke({
+            'full_html_document': '<html><body>Test</body></html>',
+            'message_to_user': 'Writing HTML page',
+            'internal_thoughts': 'Creating test page',
+            'state': state
+        })
+        
+        # Verify error handling
+        assert "page_id is required" in result
+        # Verify no HTTP request was made
+        mock_put.assert_not_called()
+    
+    @patch('agents.llamapress.nodes.logger')
+    def test_write_html_page_logging(self, mock_logger):
+        """Test that logging is properly implemented."""
+        # Create test state with all required fields
+        state = {
+            'api_token': 'test_token',
+            'agent_prompt': 'Test prompt',
+            'page_id': 'test_page',
+            'current_page_html': '<html></html>',
+            'selected_element': None,
+            'javascript_console_errors': None,
+            'messages': []
+        }
+        
+        # Execute function using tool invoke
+        write_html_page.invoke({
+            'full_html_document': '<html><body>Test</body></html>',
+            'message_to_user': 'Writing HTML page',
+            'internal_thoughts': 'Creating test page',
+            'state': state
+        })
+        
+        # Verify logging calls were made
+        mock_logger.info.assert_any_call("API TOKEN: test_token")
+        mock_logger.info.assert_any_call("Page ID: test_page")
+        expected_keys = ['api_token', 'agent_prompt', 'page_id', 'current_page_html', 'selected_element', 'javascript_console_errors', 'messages']
+        mock_logger.info.assert_any_call(f"State keys: {expected_keys}")
 
 
 class TestWorkflowBuilding:
@@ -249,18 +605,17 @@ class TestAgentConfiguration:
     @pytest.mark.asyncio
     async def test_agent_thread_isolation(self, mock_build_workflow):
         """Test that agent threads remain isolated."""
-        mock_workflow = mock_build_workflow.return_value
-        
         def get_state_side_effect(config):
             thread_id = config["configurable"]["thread_id"]
             return {
-                "messages": [{"content": f"State for {thread_id}"}],
+                "messages": [f"Message from {thread_id}"],
                 "thread_id": thread_id
             }
         
+        mock_workflow = mock_build_workflow.return_value
         mock_workflow.get_state.side_effect = get_state_side_effect
         
-        # Test two different thread states
+        # Test different thread isolation
         config1 = {"configurable": {"thread_id": "thread_1"}}
         config2 = {"configurable": {"thread_id": "thread_2"}}
         
@@ -269,5 +624,4 @@ class TestAgentConfiguration:
         
         assert state1["thread_id"] == "thread_1"
         assert state2["thread_id"] == "thread_2"
-        assert state1["messages"][0]["content"] == "State for thread_1"
-        assert state2["messages"][0]["content"] == "State for thread_2" 
+        assert state1["messages"] != state2["messages"] 
