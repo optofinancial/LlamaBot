@@ -1,7 +1,7 @@
 version: "3.8"
 
 services:
-  app:
+  llamabot-backend:
     build: .
     ports:
       - "8000:8000"
@@ -9,6 +9,8 @@ services:
       - .env
     depends_on:
       - db
+    volumes:
+      - ./app:/app/app
     command: >
       bash -c "python init_pg_checkpointer.py --uri $$DB_URI && uvicorn main:app --host 0.0.0.0 --port 8000"
     networks:
