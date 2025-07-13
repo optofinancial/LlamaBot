@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from functools import partial
 from typing import Optional
 import os
+import logging
 
 load_dotenv()
 
@@ -17,6 +18,8 @@ from langgraph.prebuilt import ToolNode, InjectedState
 import requests
 import json
 from typing import Annotated
+
+logger = logging.getLogger(__name__)
 
 # Warning: Brittle - None type will break this when it's injected into the state for the tool call, and it silently fails. So if it doesn't map state types properly from the frontend, it will break. (must be exactly what's defined here).
 class LlamaPressState(MessagesState): 
@@ -37,14 +40,13 @@ def write_html_page(full_html_document: str, message_to_user: str, internal_thou
    internal_thoughts are your thoughts about the command.
    """
    # Debug logging
-   print(f"API TOKEN: {state.get('api_token')}")
-   print(f"Page ID: {state.get('page_id')}")
-   print(f"State keys: {list(state.keys()) if isinstance(state, dict) else 'Not a dict'}")
+   logger.info(f"API TOKEN: {state.get('api_token')}")
+   logger.info(f"Page ID: {state.get('page_id')}")
+   logger.info(f"State keys: {list(state.keys()) if isinstance(state, dict) else 'Not a dict'}")
    
    # Configuration
    LLAMAPRESS_API_URL = os.getenv("LLAMAPRESS_API_URL")
 
-   
    # Get page_id from state, with fallback
    page_id = state.get('page_id')
    if not page_id:
@@ -57,11 +59,13 @@ def write_html_page(full_html_document: str, message_to_user: str, internal_thou
        if not api_token:
            return "Error: api_token is required but not provided in state"
        
+       print(f"API TOKEN: LlamaBot {api_token}")
+
        # Make HTTP request to Rails API
        response = requests.put(
            API_ENDPOINT,
            json={'content': full_html_document},
-           headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {api_token}'},
+           headers={'Content-Type': 'application/json', 'Authorization': f'LlamaBot {api_token}'},
            timeout=30  # 30 second timeout
        )
 

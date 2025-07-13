@@ -43,7 +43,7 @@ def run_rails_console_command(rails_console_command: str, message_to_user: str, 
         response = requests.post(
             API_ENDPOINT,
             json={'command': rails_console_command},
-            headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {state.get("api_token")}'},
+            headers={'Content-Type': 'application/json', 'Authorization': f'LlamaBot {state.get("api_token")}'},
             timeout=30  # 30 second timeout
         )
         
