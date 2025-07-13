@@ -8,6 +8,14 @@ import os
 from httpx import AsyncClient
 from unittest.mock import AsyncMock, MagicMock, patch
 
+# Disable LangSmith tracing completely for tests
+os.environ.pop("LANGCHAIN_TRACING_V2", None)
+os.environ.pop("LANGSMITH_ENDPOINT", None)
+os.environ.pop("LANGCHAIN_ENDPOINT", None)
+os.environ.pop("LANGSMITH_RUNS_ENDPOINTS", None)
+os.environ.pop("LANGCHAIN_API_KEY", None)
+os.environ.pop("LANGSMITH_API_KEY", None)
+
 # Add the backend directory to the Python path
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -23,27 +31,27 @@ async def async_client():
         # We need to patch the client to work with our FastAPI app
         from fastapi.testclient import TestClient
         sync_client = TestClient(app)
-        
+
         # Create a wrapper that mimics AsyncClient but uses TestClient under the hood
         class AsyncClientWrapper:
             def __init__(self, sync_client):
                 self._sync_client = sync_client
-                
+
             async def get(self, url, **kwargs):
                 return self._sync_client.get(url, **kwargs)
-                
+
             async def post(self, url, **kwargs):
                 return self._sync_client.post(url, **kwargs)
-                
+
             async def put(self, url, **kwargs):
                 return self._sync_client.put(url, **kwargs)
-                
+
             async def delete(self, url, **kwargs):
                 return self._sync_client.delete(url, **kwargs)
-                
+
             async def patch(self, url, **kwargs):
                 return self._sync_client.patch(url, **kwargs)
-        
+
         yield AsyncClientWrapper(sync_client)
 
 

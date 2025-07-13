@@ -25,7 +25,7 @@ def run_command(cmd):
 
 def run_all_tests():
     """Run all tests."""
-    return run_command(["pytest", "tests/"])
+    return run_command(["pytest", "tests/", "--disable-warnings", "-q"])
 
 
 def run_unit_tests():
@@ -61,13 +61,64 @@ def run_specific_test(test_file):
     return run_command(["pytest", f"tests/{test_file}", "-v"])
 
 
+def run_clean_tests():
+    """Run tests with minimal output (no warnings or verbose logging)."""
+    return run_command([
+        "pytest", 
+        "tests/", 
+        "--disable-warnings", 
+        "-q",
+        "--tb=no"
+    ])
+
+
+def run_simple_tests():
+    """Run tests with only the essential output - no background noise."""
+    import subprocess
+    import sys
+    
+    print("🧪 Running tests...")
+    
+    # Run pytest and capture output
+    result = subprocess.run([
+        sys.executable, "-m", "pytest", 
+        "tests/", 
+        "--tb=no", 
+        "-q",
+        "--disable-warnings"
+    ], capture_output=True, text=True, cwd=".")
+    
+    # Parse the output to extract just the test results
+    lines = result.stdout.split('\n')
+    
+    for line in lines:
+        if 'passed' in line and ('warning' in line or 'failed' in line or 'error' in line):
+            print(f"✅ {line}")
+            break
+        elif line.startswith('.') or line.startswith('F') or line.startswith('E'):
+            # Show the test progress dots
+            print(line)
+    
+    if result.returncode == 0:
+        print("🎉 All tests passed successfully!")
+    else:
+        print("❌ Some tests failed")
+        print("Full output:")
+        print(result.stdout)
+        if result.stderr:
+            print("Errors:")
+            print(result.stderr)
+    
+    return result.returncode
+
+
 def main():
     """Main function to handle command line arguments."""
     parser = argparse.ArgumentParser(description="Run tests for LlamaBot backend")
     parser.add_argument(
         "test_type", 
         nargs="?", 
-        choices=["all", "unit", "integration", "websocket", "coverage"],
+        choices=["all", "unit", "integration", "websocket", "coverage", "clean", "simple"],
         default="all",
         help="Type of tests to run"
     )
@@ -100,6 +151,8 @@ def main():
     # Run tests based on type
     if args.test_type == "all":
         return run_all_tests()
+    elif args.test_type == "clean":
+        return run_clean_tests()
     elif args.test_type == "unit":
         return run_unit_tests()
     elif args.test_type == "integration":
@@ -108,6 +161,8 @@ def main():
         return run_websocket_tests()
     elif args.test_type == "coverage":
         return run_with_coverage()
+    elif args.test_type == "simple":
+        return run_simple_tests()
     else:
         print(f"Unknown test type: {args.test_type}")
         return 1
