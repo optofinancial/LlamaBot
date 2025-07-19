@@ -32,6 +32,7 @@ from agents.llamabot_v1.nodes import build_workflow as build_workflow_llamabot_v
 from websocket.web_socket_connection_manager import WebSocketConnectionManager
 from websocket.web_socket_handler import WebSocketHandler
 from websocket.request_handler import RequestHandler
+from collections import defaultdict
 
 # Configure logging
 logging.basicConfig(
@@ -146,6 +147,11 @@ def get_langgraph_app_and_state_helper(message: dict):
     """Helper function to access RequestHandler.get_langgraph_app_and_state from main.py"""
     request_handler = RequestHandler(app)
     return request_handler.get_langgraph_app_and_state(message)
+
+# At module level
+thread_locks = defaultdict(asyncio.Lock)
+thread_queues = defaultdict(asyncio.Queue)
+MAX_QUEUE_SIZE = 10
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
@@ -272,74 +278,81 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.post("/llamabot-chat-message")
 async def llamabot_chat_message(chat_message: dict): #NOTE: This could be arbitrary JSON, depending on the agent that we're using.
+    thread_id = chat_message.get("thread_id") or "5"
     request_id = f"req_{int(time.time())}_{hash(chat_message.get('message'))%1000}"
-    logger.info(f"[{request_id}] New chat message received: {chat_message.get('message')[:50]}...")
     
-    # Define a generator function to stream the response back
+    # Get the queue for this thread
+    queue = thread_queues[thread_id]
+    
+    # If queue is full, return error
+    if queue.qsize() >= MAX_QUEUE_SIZE:
+        return JSONResponse({
+            "error": "Too many pending messages",
+            "request_id": request_id
+        }, status_code=429)
+    
+    # Add message to queue
+    await queue.put((request_id, chat_message))
+    
     async def response_generator():
-        # Track the final state to serialize at the end
-        final_state = None
-        
         try:
-            logger.info(f"[{request_id}] Starting streaming response")
-            
-            thread_id = chat_message.get("thread_id") or "5"
-            logger.info(f"[{request_id}] Using thread_id: {thread_id}")
-            
-            checkpointer = get_or_create_async_checkpointer()
-            agent_name = chat_message.get("agent_name")
-            graph, state = get_langgraph_app_and_state_helper(chat_message)
-
-            #TODO: Depending on the agent, the state will be different. This state needs to mirror the Rails AgentStateBuilder shape for this associated agent.
-            stream = graph.astream(state,
-                config={"configurable": {"thread_id": thread_id}},
-                stream_mode=["updates"]#, "messages"] # "values" is the third option ( to return the entire state object )
-            )
-
-
-            yield json.dumps({ #tell the front-end that we're starting the stream.
-                "type": "start",
-                "content": "start",
-                "request_id": request_id
-            }) + "\n"
-
-            # Stream each chunk
-            async for chunk in stream: #Yield back the raw chunks in real time. Let the frontend handle the LangGraph chunk objects.
-                is_this_chunk_an_llm_message = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'messages'
-                is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'updates'
+            # Get the lock for this thread
+            async with thread_locks[thread_id]:
+                logger.info(f"[{request_id}] Processing message from queue for thread {thread_id}")
                 
-                if is_this_chunk_an_llm_message: # For now, we aren't supporting message streaming. (Only stream type "updates" is supported.)
-                    message_chunk_from_llm = chunk[1][0] #AIMessageChunk object -> https://python.langchain.com/api_reference/core/messages/langchain_core.messages.ai.AIMessageChunk.html
-                elif is_this_chunk_an_update_stream_type: # This means that LangGraph has given us a state update. This will often include a new message from the AI.
-                    state_object = chunk[1]
-                    logger.info(f"🧠🧠🧠 LangGraph Output (State Update): {state_object}")
+                # Get our message from the queue
+                current_request_id, current_message = await queue.get()
+                if current_request_id != request_id:
+                    # This shouldn't happen due to the lock, but just in case
+                    logger.error(f"[{request_id}] Queue mismatch!")
+                    return
+                
+                try:
+                    checkpointer = get_or_create_async_checkpointer()
+                    graph, state = get_langgraph_app_and_state_helper(current_message)
+                    
+                    yield json.dumps({
+                        "type": "start",
+                        "content": "start",
+                        "request_id": request_id
+                    }) + "\n"
 
-                    for agent_key, agent_data in state_object.items():
-                        messages = agent_data['messages'] #Question: is this ALL messages coming through, or just the latest AI message?
-                        base_message_as_dict = dumpd(messages[0])["kwargs"]  # This is a BaseMessage object. See: https://python.langchain.com/api_reference/core/messages/langchain_core.messages.base.BaseMessage.html
-                        # Send SSE data event for each LLM message
-                        # yield f"data: {json.dumps(base_message_as_dict)}\n\n"
-                        yield json.dumps(base_message_as_dict) + "\n"
+                    stream = graph.astream(state,
+                        config={"configurable": {"thread_id": thread_id}},
+                        stream_mode=["updates"]
+                    )
 
+                    async for chunk in stream:
+                        # Your existing chunk processing code...
+                        is_this_chunk_an_llm_message = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'messages'
+                        is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'updates'
+                        
+                        if is_this_chunk_an_update_stream_type:
+                            state_object = chunk[1]
+                            logger.info(f"🧠🧠🧠 LangGraph Output (State Update): {state_object}")
+
+                            for agent_key, agent_data in state_object.items():
+                                if isinstance(agent_data, dict) and 'messages' in agent_data:
+                                    messages = agent_data['messages']
+                                    base_message_as_dict = dumpd(messages[0])["kwargs"]
+                                    yield json.dumps(base_message_as_dict) + "\n"
+
+                finally:
+                    # Mark task as done
+                    queue.task_done()
+                    
+                    yield json.dumps({
+                        "type": "final",
+                        "content": "final"
+                    }) + "\n"
 
         except Exception as e:
             logger.error(f"[{request_id}] Error in stream: {str(e)}", exc_info=True)
-            # SSE error event
             yield json.dumps({
                 "type": "error",
                 "content": str(e)
             }) + "\n"
-        finally:
-            logger.info(f"[{request_id}] Stream completed")
-            # SSE final event
-            # yield f"data: {json.dumps({'type': 'final', 'content': 'final'})}\n\n"
-                     # Send final update with complete messages
-            yield json.dumps({ #tell the front-end that we're ending the stream.
-                "type": "final",
-                "content": "final"
-            }) + "\n"
 
-    # Return a streaming response
     return StreamingResponse(
         response_generator(),
         media_type="text/event-stream"
