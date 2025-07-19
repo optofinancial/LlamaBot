@@ -106,6 +106,7 @@ def get_or_create_checkpointer():
                 app.state.checkpointer.setup()
                 logger.info("✅ Connected to PostgreSQL for persistence")
             except Exception as e:
+                logger.warning(f"❌ DB_URI: {db_uri}")
                 logger.warning(f"❌ PostgreSQL unavailable ({str(e).split(':', 1)[0]}). Using MemorySaver for session-based persistence.")
                 app.state.checkpointer = MemorySaver()
         else:
@@ -134,6 +135,7 @@ def get_or_create_async_checkpointer():
                 app.state.async_checkpointer.setup()
                 logger.info("✅ Connected to PostgreSQL (async) for persistence")
             except Exception as e:
+                logger.warning(f"❌ DB_URI: {db_uri}")
                 logger.warning(f"❌ PostgreSQL unavailable for async operations ({str(e).split(':', 1)[0]}). Using MemorySaver for session-based persistence.")
                 app.state.async_checkpointer = MemorySaver()
         else:
