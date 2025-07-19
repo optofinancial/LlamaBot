@@ -335,11 +335,11 @@ def run_rails_console_command(rails_console_command: str, message_to_user: str, 
 tools = [send_text_message]
 
 # Node
-def llamabot(state: LlamaBotState):
+def public_leonardo(state: LlamaBotState):
    additional_instructions = state.get("agent_prompt")
 
    # System message
-   sys_msg = SystemMessage(content=f"""You are LlamaBot, a helpful AI assistant.
+   sys_msg = SystemMessage(content=f"""You are Leonardo, a helpful AI assistant.
                         In normal chat conversations, feel free to implement markdown formatting to make your responses more readable, if it's appropriate.
                         Here are additional instructions provided by the user: <USER_INSTRUCTIONS> {additional_instructions} </USER_INSTRUCTIONS> 
                         """)
@@ -357,18 +357,18 @@ def build_workflow(checkpointer=None):
     builder = StateGraph(LlamaBotState)
 
     # Define nodes: these do the work
-    builder.add_node("llamabot", llamabot)
+    builder.add_node("public_leonardo", public_leonardo)
     builder.add_node("tools", ToolNode(tools))
 
     # Define edges: these determine how the control flow moves
-    builder.add_edge(START, "llamabot")
+    builder.add_edge(START, "public_leonardo")
     builder.add_conditional_edges(
-        "llamabot",
+        "public_leonardo",
         # If the latest message (result) from llamabot is a tool call -> tools_condition routes to tools
         # If the latest message (result) from llamabot is a not a tool call -> tools_condition routes to END
         tools_condition,
     )
-    builder.add_edge("tools", "llamabot")
+    builder.add_edge("tools", "public_leonardo")
 
     react_graph = builder.compile(checkpointer=checkpointer)
 
