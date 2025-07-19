@@ -319,8 +319,8 @@ def run_rails_console_command(rails_console_command: str, message_to_user: str, 
         return f"Unexpected Error: {str(e)}"
 
 # Global tools list
-# tools = [run_rails_console_command]
-tools = [rails_https_request]
+# tools = [rails_https_request]
+tools = [run_rails_console_command] #AGI mode.
 
 # Node
 def llamabot(state: LlamaBotState):
