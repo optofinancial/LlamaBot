@@ -6,3 +6,5 @@ chat_app.log
 frontend/node_modules
 
 env/
+
+.env.production
