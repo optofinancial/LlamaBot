@@ -104,7 +104,7 @@ def get_or_create_checkpointer():
                     reconnect_failed=lambda pool: logger.warning("PostgreSQL connection failed, using MemorySaver for persistence")
                 )
                 app.state.checkpointer = PostgresSaver(pool)
-                app.state.checkpointer.setup()
+                # app.state.checkpointer.setup()
                 logger.info("✅ Connected to PostgreSQL for persistence")
             except Exception as e:
                 logger.warning(f"❌ DB_URI: {db_uri}")
@@ -133,7 +133,7 @@ def get_or_create_async_checkpointer():
                     reconnect_failed=lambda pool: logger.warning("PostgreSQL async connection failed, using MemorySaver for persistence")
                 )
                 app.state.async_checkpointer = AsyncPostgresSaver(pool)
-                app.state.async_checkpointer.setup()
+                # app.state.async_checkpointer.setup()
                 logger.info("✅ Connected to PostgreSQL (async) for persistence")
             except Exception as e:
                 logger.warning(f"❌ DB_URI: {db_uri}")
@@ -312,6 +312,7 @@ async def llamabot_chat_message(chat_message: dict): #NOTE: This could be arbitr
                 try:
                     checkpointer = get_or_create_async_checkpointer()
                     graph, state = get_langgraph_app_and_state_helper(current_message)
+                    # breakpoint()
                     
                     yield json.dumps({
                         "type": "start",
