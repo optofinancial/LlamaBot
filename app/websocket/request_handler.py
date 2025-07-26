@@ -89,7 +89,7 @@ class RequestHandler:
                                 tool_calls = []
                                 
                                 if messages and len(messages) > 0:
-                                    message = messages[0]
+                                    message = messages[-1] # get the latest message (the last one in the list. Sometimes we have a human message and an AI message, so we want the AI message, depending on if we're using the create_react_agent tool or not)
                                     if hasattr(message, 'additional_kwargs') and message.additional_kwargs:
                                         tool_calls_data = message.additional_kwargs.get('tool_calls')
                                         if tool_calls_data:
@@ -116,12 +116,17 @@ class RequestHandler:
 
                                     # Only send if WebSocket is still open
                                     if self._is_websocket_open(websocket):
-                                        await websocket.send_json({
+
+                                        # NOTE: This JSON object is a standardized format that we've been using for all our front-ends.  
+                                        # Eventually, we might want to just rely on the base_message data shape as the source of truth for all front-ends.
+                                        llamapress_user_interface_json = {
                                             "type": message.type if hasattr(message, 'type') else "ai",
-                                            "content": messages_as_string[0] if messages_as_string else "",
+                                            "content": messages_as_string[-1] if messages_as_string else "",
                                             "tool_calls": tool_calls,
                                             "base_message": base_message_as_dict
-                                        })
+                                        }
+                                        
+                                        await websocket.send_json(llamapress_user_interface_json)
                                 break
                         
                         logger.info(f"LangGraph Output (State Update): {chunk}")
