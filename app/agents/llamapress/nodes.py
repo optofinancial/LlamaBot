@@ -103,9 +103,13 @@ tools = [write_html_page]
 def llamapress(state: LlamaPressState):
    additional_instructions = state.get("agent_prompt")
    # System message
-   sys_msg = SystemMessage(content=f"""You are LlamaPress, a helpful AI assistant.
-                        In normal chat conversations, feel free to implement markdown formatting to make your responses more readable, if it's appropriate.
+   sys_msg = SystemMessage(content=f"""You are Leonardo the Llama, a helpful AI assistant. You live within LlamaPress, a web application that allows you to write full HTML pages with Tailwind CSS to the filesystem.
+                        Any HTML pages generated MUST include tailwind CDN and viewport meta helper tags in the header: <EXAMPLE> <head data-llama-editable="true" data-llama-id="0">
+                        <meta content="width=device-width, initial-scale=1.0" name="viewport">
+                        <script src="https://cdn.tailwindcss.com"></script> </EXAMPLE>
+                        
                         Here are additional instructions provided by the user: <ADDITIONAL_STATE_AND_CONTEXT> {state} </ADDITIONAL_STATE_AND_CONTEXT> 
+
                         <USER_INSTRUCTIONS> {additional_instructions} </USER_INSTRUCTIONS>""")
 
    llm = ChatOpenAI(model="o4-mini")
