@@ -1,4 +1,6 @@
 from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
+
 from langchain_core.tools import tool
 from dotenv import load_dotenv
 from functools import partial
@@ -17,12 +19,12 @@ from langgraph.prebuilt import ToolNode, InjectedState
 import requests
 import json
 from typing import Annotated
+from datetime import datetime
 
 # Warning: Brittle - None type will break this when it's injected into the state for the tool call, and it silently fails. So if it doesn't map state types properly from the frontend, it will break. (must be exactly what's defined here).
-class LlamaBotState(MessagesState): 
+class LlamaBotState(MessagesState):
     api_token: str
     agent_prompt: str
-    available_routes: Optional[str] = None
 
 @tool
 def rails_https_request(route: Optional[str], method: Optional[str], params: Optional[dict], state: Annotated[dict, InjectedState]) -> str:
@@ -318,15 +320,23 @@ def run_rails_console_command(rails_console_command: str, message_to_user: str, 
     except Exception as e:
         return f"Unexpected Error: {str(e)}"
 
+@tool #used as an example of a tool that doesn't require a state for testing Ollama Local Models
+def weather_in_city(city: str) -> str:
+    """
+    Get the weather in a city.
+    """
+    return f"The weather in {city} is sunny."
+
 # Global tools list
-# tools = [rails_https_request]
-tools = [run_rails_console_command] #AGI mode.
+tools = [rails_https_request]
+# tools = [run_rails_console_command] #AGI mode.
+# tools = [weather_in_city]
+# tools = []
 
 # Node
 def llamabot(state: LlamaBotState):
    additional_instructions = state.get("agent_prompt")
 #    breakpoint()
-
 
    # System message
    sys_msg = SystemMessage(content=f"""You are LlamaBot, a helpful AI assistant.
@@ -334,13 +344,31 @@ def llamabot(state: LlamaBotState):
                         Here are additional instructions provided by the user: <USER_INSTRUCTIONS> {additional_instructions} </USER_INSTRUCTIONS> 
                         You can do HTTP requests to the Rails server using the rails_https_request tool and the following routes: <RAILS_ROUTES> {state.get("available_routes")} </RAILS_ROUTES>""")
 
+#    model = "deepseek-r1:8b"
+#    model = "dolphin-mixtral:8x7b"
+#    model = "deepseek-coder:33b"
+#    model = "llama3.2:latest"
+#    model = "llama3.1:8b"
+
+#    llm = ChatOllama(
+#         model=model,
+#         temperature=0)
+
+#    llm = ChatOllama(
+#         model="dolphin-mixtral:8x7b",
+#         temperature=0)
+   
+#    llm = ChatOllama(
+#         model="deepseek:33b",
+#         temperature=0)
+
 #    llm = ChatOpenAI(model="o4-mini")
    llm = ChatOpenAI(model="gpt-4o")
 
 #    breakpoint()
 
    llm_with_tools = llm.bind_tools(tools)
-   return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])]}
+   return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])], "created_at": datetime.now()}
 
 def build_workflow(checkpointer=None):
     # Graph

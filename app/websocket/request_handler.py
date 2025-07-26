@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 from typing import Any, Dict, TypedDict
+from datetime import datetime
 
 class RequestHandler:
     def __init__(self, app: FastAPI):
@@ -60,7 +61,17 @@ class RequestHandler:
                     is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'updates'
                     if is_this_chunk_an_llm_message:
                         message_chunk_from_llm = chunk[1][0] #AIMessageChunk object -> https://python.langchain.com/api_reference/core/messages/langchain_core.messages.ai.AIMessageChunk.html
-                    
+                        data_type = "AIMessageChunk"
+                        base_message_as_dict = dumpd(chunk[1][0])["kwargs"]
+                        logger.info(f"🍅 {base_message_as_dict["content"]}")
+                        # # Only send if WebSocket is still open
+                        if self._is_websocket_open(websocket):
+                            await websocket.send_json({
+                                "type": base_message_as_dict["type"],
+                                "content": base_message_as_dict["content"],
+                                "tool_calls": [],
+                                "base_message": base_message_as_dict
+                            })
                     
                     elif is_this_chunk_an_update_stream_type: # This means that LangGraph has given us a state update. This will often include a new message from the AI.
                         state_object = chunk[1]
@@ -208,7 +219,7 @@ class RequestHandler:
                 app = self.get_app_from_workflow_string(langgraph_workflow)
                 
                 # Create messages from the message content
-                messages = [HumanMessage(content=message.get("message"))]
+                messages = [HumanMessage(content=message.get("message"), response_metadata={'created_at': datetime.now()})] 
                 
                 # Start with the transformed messages field
                 state = {"messages": messages}

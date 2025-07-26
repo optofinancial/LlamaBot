@@ -34,6 +34,7 @@ jsonschema_rs==0.29.1
 langchain==0.3.25
 langchain-community==0.3.24
 langchain-core==0.3.60
+langchain-ollama==0.3.0
 langchain-openai==0.3.17
 langchain-text-splitters==0.3.8
 langgraph==0.4.5
@@ -52,6 +53,7 @@ mdurl==0.1.2
 multidict==6.4.4
 mypy_extensions==1.1.0
 numpy==2.2.6
+ollama==0.5.1
 openai==1.79.0
 orjson==3.10.18
 ormsgpack==1.9.1

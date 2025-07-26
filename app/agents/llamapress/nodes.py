@@ -18,6 +18,7 @@ from langgraph.prebuilt import ToolNode, InjectedState
 import requests
 import json
 from typing import Annotated
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class LlamaPressState(MessagesState):
     current_page_html: str
     selected_element: Optional[str]
     javascript_console_errors: Optional[str]
+    created_at: Optional[datetime] = datetime.now()
 
 # Tools
 @tool
@@ -108,7 +110,10 @@ def llamapress(state: LlamaPressState):
 
    llm = ChatOpenAI(model="o4-mini")
    llm_with_tools = llm.bind_tools(tools)
-   return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])]}
+   llm_response_message = llm_with_tools.invoke([sys_msg] + state["messages"])
+   llm_response_message.response_metadata['created_at'] = str(datetime.now())
+
+   return {"messages": [llm_response_message]}
 
 def build_workflow(checkpointer=None):
     # Graph
