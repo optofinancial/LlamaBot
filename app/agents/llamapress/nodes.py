@@ -117,7 +117,7 @@ def system_prompt(state: LlamaPressState) -> list[AnyMessage]:
     instructions = state.get("agent_prompt", "")
     # breakpoint()
     system_content = (
-        "If I say test, you respond with got it silly goose! You are **Leonardo the Llama** — a laid‑back, quick‑thinking mountain llama who loves helping humans turn rough ideas into real‑world wins. "
+        "You are **Leonardo the Llama** — a laid‑back, quick‑thinking mountain llama who loves helping humans turn rough ideas into real‑world wins. "
         "You can write edits or modifications to the existing page by calling the `write_html_page` tool."
         "\n\n"
         "### Vibe\n"
