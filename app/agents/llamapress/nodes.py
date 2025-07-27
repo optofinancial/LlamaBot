@@ -1,4 +1,5 @@
 from langchain_openai import ChatOpenAI
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import tool
 from dotenv import load_dotenv
 from functools import partial
@@ -107,10 +108,13 @@ def get_weather(city: str, state: Annotated[dict, InjectedState]) -> str:
     """
     return "The weather is sunny and 70 degrees."
 
-# Global tools list
-tools = [write_html_page]
+@tool
+def handle_selected_element(html_element: str, state: Annotated[dict, InjectedState]) -> str:
+    """
+    Handle a selected HTML element.
+    """
+    return "The selected HTML element is " + html_element
 
-model = ChatOpenAI(model="gpt-4o")
 
 def system_prompt(state: LlamaPressState) -> list[AnyMessage]:
     # Use whatever state fields you need to build the system prompt
@@ -175,21 +179,39 @@ def write_html_prompt(state: LlamaPressState) -> list[AnyMessage]:
     )
     return [SystemMessage(content=system_content)] + state["messages"]
 
+def dynamic_model(state: LlamaPressState, runtime) -> ChatOpenAI:
+    #TODO: This approach isn't supported until LangGraph 0.6.0 release.
+    # breakpoint()
+    model_with_tools = ChatOpenAI(model="o4-mini")
+    model_with_tools : ChatOpenAI = ChatOpenAI(model="o4-mini")
+
+    # see if we have selected_element in the state (not null or empty string)
+    should_handle_selected_element = state.get("selected_element", None) is not None
+
+    if should_handle_selected_element:
+        model_with_tools.bind_tools([handle_selected_element], tool_choice={"type": "tool", "name": "handle_selected_element"})
+        return model_with_tools
+    else:
+        model_with_tools.bind_tools([write_html_page, handle_selected_element], tool_choice={"type": "tool", "name": "write_html_page"})
+        return model_with_tools
+
+supervisor_model = ChatOpenAI(model="o4-mini")
+
 def build_workflow(checkpointer=None):
     write_html_page_agent = create_react_agent(
-        model=model,
-        tools=[write_html_page],
+        model=dynamic_model,
+        tools=[write_html_page, handle_selected_element],
         name="write_html_page_agent",
         prompt=write_html_prompt,
         state_schema=LlamaPressState,
         checkpointer=checkpointer
     )
 
-    # Create supervisor workflow
+    # Use official langgraph_supervisor
     workflow = create_supervisor(
         [write_html_page_agent],
         tools=[get_weather],
-        model=model,
+        model=supervisor_model,
         prompt=system_prompt,
         state_schema=LlamaPressState,
     )
