@@ -6,3 +6,5 @@
 - Feat: Add 'created_at' metadata for AIMessage agents#llamabot_v1#nodes and agents/llamapress/nodes to automatically add time-stamps
 - Feat: Add support for Ollama for running locally on Mac in LlamaBot agent
 - Bug fix: remove checkpointer setup() in main application. Now you must run `python init_pg_checkpointer.py` on app setup.
+- Feat: Add support subgraph=True data shape in request_handler.py, in prepartion for supporting prebuilt create_react_agent and multi-agent supervisor agents.
+- Feat: Add selected element tool call so the agent can modify just a small slice of a page.
