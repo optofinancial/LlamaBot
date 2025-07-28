@@ -106,7 +106,7 @@ def get_weather(city: str, state: Annotated[dict, InjectedState]) -> str:
     """
     Get the weather for a given city.
     """
-    return "The weather is sunny and 70 degrees."
+    return "The weather is cold and rainy and 50 degrees."
 
 @tool
 def handle_selected_element(html_element: str, state: Annotated[dict, InjectedState]) -> str:
@@ -168,7 +168,7 @@ def write_html_prompt(state: LlamaPressState) -> list[AnyMessage]:
     system_content = (
         "You are Leonardo the Llama, a helpful AI assistant. "
         "You live within LlamaPress, a web application that allows you "
-        "to write full HTML pages with Tailwind CSS to the filesystem. "
+        "to write full HTML pages with Tailwind CSS to the filesystem. You also can check the weather."
         "Any HTML pages generated MUST include tailwind CDN and viewport meta helper tags in the header: "
         "<EXAMPLE> <head data-llama-editable='true' data-llama-id='0'>"
         "<meta content='width=device-width, initial-scale=1.0' name='viewport'>"
@@ -179,28 +179,38 @@ def write_html_prompt(state: LlamaPressState) -> list[AnyMessage]:
     )
     return [SystemMessage(content=system_content)] + state["messages"]
 
-def dynamic_model(state: LlamaPressState, runtime) -> ChatOpenAI:
+def dynamic_model(state: LlamaPressState, runtime) -> ChatOpenAI: #something with binding these tools is off. It's not actually calling the write_html_page tool for some reason.
     #TODO: This approach isn't supported until LangGraph 0.6.0 release.
     # breakpoint()
-    model_with_tools = ChatOpenAI(model="o4-mini")
-    model_with_tools : ChatOpenAI = ChatOpenAI(model="o4-mini")
+    model_with_tools = ChatOpenAI(model="gpt-4o").bind_tools([write_html_page, handle_selected_element, get_weather])
+    return model_with_tools
 
-    # see if we have selected_element in the state (not null or empty string)
-    should_handle_selected_element = state.get("selected_element", None) is not None
+    # # see if we have selected_element in the state (not null or empty string)
+    # should_handle_selected_element = state.get("selected_element", None) is not None
+    # # breakpoint() # there's an issue with the dynamic_model for tool calling. It's not binding the tools properly.?
 
-    if should_handle_selected_element:
-        model_with_tools.bind_tools([handle_selected_element], tool_choice={"type": "tool", "name": "handle_selected_element"})
-        return model_with_tools
-    else:
-        model_with_tools.bind_tools([write_html_page, handle_selected_element], tool_choice={"type": "tool", "name": "write_html_page"})
-        return model_with_tools
+    # if should_handle_selected_element:
+    #     model_with_tools.bind_tools([handle_selected_element], tool_choice={"type": "tool", "name": "handle_selected_element"})
+    #     return model_with_tools
+    # else:
+    #     model_with_tools.bind_tools([write_html_page, get_weather], tool_choice={"type": "tool", "name": "write_html_page"})
+    #     return model_with_tools #question: where does tool-binding happen? Is it in create_react_agent. Does this model dynamic model even matter when it comes to tool-binding?
 
 supervisor_model = ChatOpenAI(model="o4-mini")
 
 def build_workflow(checkpointer=None):
-    write_html_page_agent = create_react_agent(
-        model=dynamic_model,
-        tools=[write_html_page, handle_selected_element],
+
+# Starting to doubt this create_supervisor agent approach in the LangGraph pre-built.
+# There’s something that isn’t working quite right with dynamic model and tool binding.
+
+# I think we need to abandon the supervisor and create_react_agent approach. I don’t think it’s stable enough to deploy into production. There’s too many issues with it.
+# Let's move on for now, and save this to finish implementing for a future date.
+
+
+    write_html_page_agent = create_react_agent( 
+        # model=dynamic_model,
+        model=supervisor_model, # use supervisor for now to test. Ah, flip. Confirmed: dynamic model is not being used correctly
+        tools=[write_html_page, handle_selected_element, get_weather], # confused - will this override the tool bindings in the dynamic model?
         name="write_html_page_agent",
         prompt=write_html_prompt,
         state_schema=LlamaPressState,
@@ -210,7 +220,7 @@ def build_workflow(checkpointer=None):
     # Use official langgraph_supervisor
     workflow = create_supervisor(
         [write_html_page_agent],
-        tools=[get_weather],
+        tools=[],
         model=supervisor_model,
         prompt=system_prompt,
         state_schema=LlamaPressState,
