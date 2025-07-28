@@ -84,7 +84,10 @@ class WebSocketHandler:
                         self.request_handler.handle_request(message, self.websocket)
                     )
                 except WebSocketDisconnect as e:
-                    logger.info(f"WebSocket disconnected! Error: {e}") 
+                    if e.code == 1000:
+                        logger.info(f"WebSocket connection closed gracefully by client: {e.reason}")
+                    else:
+                        logger.warning(f"WebSocket disconnected with unexpected code: {e.code} {e.reason}")
                     break
                 except Exception as e:
                     logger.error(f"WebSocket error: {str(e)}")
