@@ -198,7 +198,7 @@ def write_html_page_agent(state: LlamaPressState):
 
     model = ChatOpenAI(model="gpt-4.1-2025-04-14")
     llm_with_tools = model.bind_tools([write_html_page])
-    llm_response_message = llm_with_tools.invoke([SystemMessage(content=system_content)] + state["messages"])
+    llm_response_message = llm_with_tools.invoke([SystemMessage(content=system_content)] + state["messages"] + [SystemMessage(content="<CURRENT_PAGE_HTML>" + state.get("current_page_html") + "</CURRENT_PAGE_HTML>")])
     llm_response_message.response_metadata["created_at"] = str(datetime.now())
     # breakpoint()
 
