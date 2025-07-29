@@ -164,8 +164,8 @@ def selected_element_agent(state: LlamaPressState):
         "You are able to write the new HTML and Tailwind snippet of code to the filesystem, if the user asks you to."
     )
 
-    model = ChatOpenAI(model="o4-mini")
-    llm_with_tools = model.bind_tools(tools)
+    model = ChatOpenAI(model="gpt-4o")
+    llm_with_tools = model.bind_tools([overwrite_html_snippet])
     llm_response_message = llm_with_tools.invoke([SystemMessage(content=system_content)] + state["messages"])
     llm_response_message.response_metadata["created_at"] = str(datetime.now())
 
@@ -173,24 +173,23 @@ def selected_element_agent(state: LlamaPressState):
 
 # Node
 def write_html_page_agent(state: LlamaPressState):
-    instructions = state.get("agent_prompt", "")
+    # instructions = state.get("agent_prompt", "")
     system_content = (
-        "You are Leonardo the Llama, a helpful AI assistant. "
-        "You live within LlamaPress, a web application that allows you "
-        "to write full HTML pages with Tailwind CSS to the filesystem. You also can check the weather."
+        f"You are currently viewing an HTML Page and Tailwind CSS full page."
+        "The user needs you to respond to their message. If the user so desires, you are able to modify the HTML and Tailwind snippet of code, if the user asks you to by using the tool/function `write_html_page`"
+        "Or, you can just respond and answer questions, etc. Parse the user's intent and make a decision."
+        "You are able to write the new HTML and Tailwind snippet of code to the filesystem, if the user asks you to."
         "Any HTML pages generated MUST include tailwind CDN and viewport meta helper tags in the header: "
         "<EXAMPLE> <head data-llama-editable='true' data-llama-id='0'>"
         "<meta content='width=device-width, initial-scale=1.0' name='viewport'>"
         "<script src='https://cdn.tailwindcss.com'></script> </EXAMPLE>"
-        
-        f"Here is additional state context: <ADDITIONAL_STATE_AND_CONTEXT> {state} </ADDITIONAL_STATE_AND_CONTEXT> "
-        f"And here are additional system instructions provided by the user: <USER_INSTRUCTIONS> {instructions} </USER_INSTRUCTIONS>"
     )
 
-    model = ChatOpenAI(model="o4-mini")
-    llm_with_tools = model.bind_tools(tools)
+    model = ChatOpenAI(model="gpt-4o")
+    llm_with_tools = model.bind_tools([write_html_page])
     llm_response_message = llm_with_tools.invoke([SystemMessage(content=system_content)] + state["messages"])
     llm_response_message.response_metadata["created_at"] = str(datetime.now())
+    # breakpoint()
 
     return {"messages": [llm_response_message]}
 
