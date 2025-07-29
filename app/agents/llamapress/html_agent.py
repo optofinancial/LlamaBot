@@ -87,7 +87,7 @@ async def write_html_page(
         # Parse the response
         if response.status_code == 200:
             data = response.json()
-            return json.dumps(data, ensure_ascii=False, indent=2)
+            return {'tool_name': 'write_html_page', 'tool_args': {'full_html_document': full_html_document, 'message_to_user': message_to_user, 'internal_thoughts': internal_thoughts}}
         else:
             return f"HTTP Error {response.status_code}: {response.text}"
 
