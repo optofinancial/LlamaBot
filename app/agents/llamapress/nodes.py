@@ -88,17 +88,15 @@ def system_prompt(state: LlamaPressState) -> list[AnyMessage]:
     return [SystemMessage(content=system_content)] + state["messages"]
 
 def build_workflow(checkpointer=None):
-
     html_agent = build_html_agent(checkpointer=checkpointer)
-    
     # Use official langgraph_supervisor
-    main_supervisor_agent = create_supervisor(
-        [html_agent],
-        tools=[],
-        model=ChatOpenAI(model="o4-mini"),
-        prompt=system_prompt,
-        state_schema=LlamaPressState,
-    )
+    # main_supervisor_agent = create_supervisor(
+    #     [html_agent],
+    #     tools=[],
+    #     model=ChatOpenAI(model="o4-mini"),
+    #     prompt=system_prompt,
+    #     state_schema=LlamaPressState,
+    # )
 
     # Compile and run
-    return main_supervisor_agent.compile(checkpointer=checkpointer)
+    return html_agent

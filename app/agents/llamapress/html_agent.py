@@ -164,7 +164,7 @@ def selected_element_agent(state: LlamaPressState):
         "You are able to write the new HTML and Tailwind snippet of code to the filesystem, if the user asks you to."
     )
 
-    model = ChatOpenAI(model="gpt-4o")
+    model = ChatOpenAI(model="gpt-4.1-2025-04-14")
     llm_with_tools = model.bind_tools([overwrite_html_snippet])
     llm_response_message = llm_with_tools.invoke([SystemMessage(content=system_content)] + state["messages"])
     llm_response_message.response_metadata["created_at"] = str(datetime.now())
@@ -185,7 +185,7 @@ def write_html_page_agent(state: LlamaPressState):
         "<script src='https://cdn.tailwindcss.com'></script> </EXAMPLE>"
     )
 
-    model = ChatOpenAI(model="gpt-4o")
+    model = ChatOpenAI(model="gpt-4.1-2025-04-14")
     llm_with_tools = model.bind_tools([write_html_page])
     llm_response_message = llm_with_tools.invoke([SystemMessage(content=system_content)] + state["messages"])
     llm_response_message.response_metadata["created_at"] = str(datetime.now())
