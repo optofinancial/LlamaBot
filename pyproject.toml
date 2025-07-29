@@ -1,0 +1,21 @@
+[project]
+name = "LlamaBot"
+version = "0.1.0"
+dependencies = [
+    "langchain-openai",
+    "langchain_core",
+    "python-dotenv",
+    "langgraph",
+    "langgraph_supervisor",
+    "requests",
+    "fastapi",
+    "uvicorn",
+    "starlette",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"] 

@@ -8,3 +8,4 @@ frontend/node_modules
 env/
 
 .env.production
+LlamaBot.egg-info/
