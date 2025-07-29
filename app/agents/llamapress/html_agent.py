@@ -176,13 +176,24 @@ def write_html_page_agent(state: LlamaPressState):
     # instructions = state.get("agent_prompt", "")
     system_content = (
         f"You are currently viewing an HTML Page and Tailwind CSS full page."
-        "The user needs you to respond to their message. If the user so desires, you are able to modify the HTML and Tailwind snippet of code, if the user asks you to by using the tool/function `write_html_page`"
-        "Or, you can just respond and answer questions, etc. Parse the user's intent and make a decision."
-        "You are able to write the new HTML and Tailwind snippet of code to the filesystem, if the user asks you to."
-        "Any HTML pages generated MUST include tailwind CDN and viewport meta helper tags in the header: "
-        "<EXAMPLE> <head data-llama-editable='true' data-llama-id='0'>"
-        "<meta content='width=device-width, initial-scale=1.0' name='viewport'>"
-        "<script src='https://cdn.tailwindcss.com'></script> </EXAMPLE>"
+        "The user needs you to respond to their message. If the user so desires, you are able to modify the HTML and Tailwind snippet of code,"
+        "if the user asks you to by using the tool/function `write_html_page`"
+        "IF you using the `write_html_page` function/tool, and are generating HTML/CSS/JavaScript code, include comments that explain what you're doing for each logical block of code you're about to generate."
+            "For every logical block you generate (HTML section, CSS rule set, JS function):"
+            "1. Precede it with exactly **one** comment line that starts with 'CODE_EXPLANATION: <code_explanation> writing a section that ... </code_explanation>'"
+            "2. Keep the code_explanation ≤ 15 words."
+            "3. Never include other text on that line."
+            "4. Examples of how to do this:"
+                "EXAMPLE_HTML_COMMENT <!-- <code_explanation>Adding a section about the weather</code_explanation> -->"
+                "EXAMPLE_TAILWIND_CSS_COMMENT /* <code_explanation>Setting the page background color to blue with Tailwind CSS</code_explanation> */"
+                "EXAMPLE_JAVASCRIPT_COMMENT // <code_explanation>Making the weather section interactive and animated with JavaScript  </code_explanation>"
+            "5. You are able to write the new HTML and Tailwind snippet of code to the filesystem, if the user asks you to."
+                "Any HTML pages generated MUST include tailwind CDN and viewport meta helper tags in the header: "
+                "<EXAMPLE> <head data-llama-editable='true' data-llama-id='0'>"
+                "<meta content='width=device-width, initial-scale=1.0' name='viewport'>"
+                "<script src='https://cdn.tailwindcss.com'></script> </EXAMPLE>"
+        "You DONT HAVE to write HTML code, and in fact sometimes it is inappropriate depending on what the user is asking you to do."
+        "You can also just respond and answer questions, or even ask clarifying questions, etc. Parse the user's intent and make a decision."
     )
 
     model = ChatOpenAI(model="gpt-4.1-2025-04-14")
