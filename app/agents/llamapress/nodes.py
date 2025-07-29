@@ -12,7 +12,7 @@ load_dotenv()
 from langgraph.graph import MessagesState
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, AnyMessage
 
-from langgraph.graph import START, StateGraph
+from langgraph.graph import START, END, StateGraph
 from langgraph.prebuilt import tools_condition
 from langgraph.prebuilt import ToolNode, InjectedState
 
@@ -26,6 +26,7 @@ from typing import Annotated
 from datetime import datetime
 
 from app.agents.llamapress.html_agent import build_workflow as build_html_agent
+from app.agents.llamapress.clone_agent import build_workflow as build_clone_agent
 
 logger = logging.getLogger(__name__)
 
@@ -87,16 +88,39 @@ def system_prompt(state: LlamaPressState) -> list[AnyMessage]:
     system_content = """You are a helpful assistant that can help the user with their request. You can hand off to the HTML agent if there are any requests related to an existing page the user is looking at, or modifications, etc."""
     return [SystemMessage(content=system_content)] + state["messages"]
 
+def route_to_agent(state: LlamaPressState):
+    last_message = state.get("messages")[-1]
+    if "clone" in last_message.content.lower():
+        return {"next": "clone_agent"}
+    else:
+        return {"next": "html_agent"}
+
 def build_workflow(checkpointer=None):
     html_agent = build_html_agent(checkpointer=checkpointer)
-    # Use official langgraph_supervisor
-    # main_supervisor_agent = create_supervisor(
-    #     [html_agent],
-    #     tools=[],
-    #     model=ChatOpenAI(model="o4-mini"),
-    #     prompt=system_prompt,
-    #     state_schema=LlamaPressState,
-    # )
+    clone_agent = build_clone_agent(checkpointer=checkpointer)
+
+    # create supervisor graph.
+    supervisor_graph = StateGraph(LlamaPressState)
+    supervisor_graph.add_node("route_to_agent", route_to_agent)
+    supervisor_graph.add_node("html_agent", html_agent)
+    supervisor_graph.add_node("clone_agent", clone_agent)
+    # Define edges: these determine how the control flow moves
+    supervisor_graph.add_edge(START, "route_to_agent")
+
+    # Router condition
+    supervisor_graph.add_conditional_edges(
+        "route_to_agent",
+         lambda x: x["next"], 
+         {
+             "html_agent": "html_agent",
+             "clone_agent": "clone_agent",
+         }
+    )
+
+    supervisor_graph.add_edge("html_agent", END)
+    supervisor_graph.add_edge("clone_agent", END)
+
+    return supervisor_graph.compile(checkpointer=checkpointer)
 
     # Compile and run
     return html_agent
