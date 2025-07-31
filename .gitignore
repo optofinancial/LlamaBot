@@ -9,3 +9,5 @@ env/
 
 .env.production
 LlamaBot.egg-info/
+
+app/agents/private
