@@ -1,0 +1,18 @@
+0.1.14:
+
+07/26/2025: 
+- Feat: Stream AIMessageChunks in websocket request_handler (HTTP streaming, coming soon!)
+- Feat: Add 'created_at' metadata for HumanMessage request_handler.py to automatically add time-stamps (makes it easier to sort message histories in front-end JavaScript)
+- Feat: Add 'created_at' metadata for AIMessage agents#llamabot_v1#nodes and agents/llamapress/nodes to automatically add time-stamps
+- Feat: Add support for Ollama for running locally on Mac in LlamaBot agent
+- Bug fix: remove checkpointer setup() in main application. Now you must run `python init_pg_checkpointer.py` on app setup.
+- Feat: Add support subgraph=True data shape in request_handler.py, in prepartion for supporting prebuilt create_react_agent and multi-agent supervisor agents.
+- Feat: Add selected element tool call so the agent can modify just a small slice of a page.
+
+07/28/2025:
+- DX: Add better websocket disconnect error if it's 1000, it meant the client intentionally disconnected. Add better log.
+- Bug: Wrap our tool call as async so that heartbeats can continue with the client & server.
+
+07/30/2025:
+- Refactor: LlamaPress into supervisor agent, and add html_agent and clone sub-agents
+- Feat: Add url clone and image clone sub-agents
