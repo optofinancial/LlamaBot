@@ -137,7 +137,7 @@ def url_clone_agent(state: MessagesState):
             # force a tool call to the LLM with write_html_page
             image_path = data.get("tool_args").get("image_path")
             base64_image = encode_image(image_path)
-            llm_forced_tool_call = ChatOpenAI(model="gpt-4o").bind_tools([write_html_page], tool_choice="write_html_page")
+            llm_forced_tool_call = ChatOpenAI(model="o4-mini").bind_tools([write_html_page], tool_choice="write_html_page")
             
             print(f"Making our call to o3 vision right now")
     
@@ -274,9 +274,9 @@ async def image_clone_agent(state: LlamaPressState):
                         base64_image = base64.b64encode(image_data).decode('utf-8')
 
             # base64_image = encode_image(image_data)
-            llm_forced_tool_call = ChatOpenAI(model="gpt-4o").bind_tools([write_html_page], tool_choice="write_html_page")
+            llm_forced_tool_call = ChatOpenAI(model="o4-mini").bind_tools([write_html_page], tool_choice="write_html_page")
             
-            print(f"Making our call to o3 vision right now")
+            print(f"Making our call to o4-mini right now")
     
             response = llm_forced_tool_call.invoke([
                 SystemMessage(content="""
