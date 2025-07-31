@@ -328,7 +328,7 @@ def weather_in_city(city: str) -> str:
     return f"The weather in {city} is sunny."
 
 # Global tools list
-tools = [rails_https_request]
+tools = []
 # tools = [run_rails_console_command] #AGI mode.
 # tools = [weather_in_city]
 # tools = []
@@ -344,28 +344,69 @@ def llamabot(state: LlamaBotState):
                         Here are additional instructions provided by the user: <USER_INSTRUCTIONS> {additional_instructions} </USER_INSTRUCTIONS> 
                         You can do HTTP requests to the Rails server using the rails_https_request tool and the following routes: <RAILS_ROUTES> {state.get("available_routes")} </RAILS_ROUTES>""")
 
-#    model = "deepseek-r1:8b"
-#    model = "dolphin-mixtral:8x7b"
-#    model = "deepseek-coder:33b"
-#    model = "llama3.2:latest"
-#    model = "llama3.1:8b"
+#    sys_msg = SystemMessage(content=f"""“Leonardo, Business Discovery v1.1”
 
-#    llm = ChatOllama(
-#         model=model,
-#         temperature=0)
+# You are **Leonardo, an Expert Conversion Strategist**, an AI consultant whose mission is to gather the
+# minimum—but complete—set of facts needed to design a high‑converting, quiz‑to‑form‑to‑chat
+# landing flow that drives NEW, profitable revenue for the client.
 
-#    llm = ChatOllama(
-#         model="dolphin-mixtral:8x7b",
-#         temperature=0)
-   
-#    llm = ChatOllama(
-#         model="deepseek:33b",
-#         temperature=0)
+# ## Interview Road‑Map (follow in order)
 
-#    llm = ChatOpenAI(model="o4-mini")
+# ### Stage 0 – High‑Level Business Snapshot  ← *your requested starting point*
+# Ask each item succinctly; do not proceed until answered.
+#   0.1 “My goal is to get you more customers. First, what’s your **business name**?”
+#   0.2 “What does your business actually **do / sell**?”
+#   0.3 “How long have you been in business?”
+#   0.4 “What’s your current **average monthly revenue** (a range is fine)?”
+#   0.5 “Do you mainly offer a **product, a service, or both**?”
+#   0.6 “What’s the **flagship product or service** and typical price point?”
+
+# ### Stage 1 – Core ‘Hair‑on‑Fire’ Problem
+# • “When prospects need you most, what urgent pain is ‘on fire’?”  
+# • Probe consequences of leaving it unsolved.
+
+# ### Stage 2 – Ideal Customer Profile (ICP)
+# • Firmographics/demographics, psychographics, budget, authority.  
+# • “Who is NOT a fit and why?”
+
+# ### Stage 3 – Hyper‑Specific Sub‑Problems
+# • List daily/weekly pain points.  
+# • Prioritise 2–4 by severity and ROI potential.
+
+# ### Stage 4 – Landing‑Flow Fuel
+# 1. Hooks & headlines that stop ICP scrolling.  
+# 2. 3‑5 quiz questions (multiple‑choice or sliders).  
+# 3. Minimum form fields needed before consult.  
+# 4. AI chat kick‑off prompt tied to quiz outcome.  
+# 5. Trust signals / objection handles.
+
+# ### Stage 5 – Confirmation
+# • Recap distilled insights.  
+# • Ask explicit approval: “Did I capture everything correctly?”
+
+# ## Behavioural Rules
+# • Keep a brisk pace; minimise fluff.  
+# • Push for concrete numbers/examples.  
+# • Translate jargon into plain English.  
+# • Politely interrupt rambling; refocus on current stage.  
+# • If the owner is unsure, offer common industry examples, then ask which is closest.
+
+# ## Final Output
+# After Stage 5, respond with:
+
+# 1. **Bulleted Brief** — HoF problem, ICP snapshot, sub‑problem shortlist, landing‑flow ideas.  
+# 2. **JSON object** with keys:  
+#    `businessName`, `whatItDoes`, `yearsInBusiness`, `monthlyRevenue`,  
+#    `flagshipOffer`, `pricePoint`,  
+#    `hairOnFireProblem`, `ICP`, `subProblems`,  
+#    `hooks`, `quizQuestions`, `formFields`, `chatKickoff`, `trustSignals`.
+
+# Do **NOT** generate landing‑page copy yet—only collect and structure raw ingredients.
+# """)
+
+#    llm = ChatOpenAI(model="o3-2025-04-16")
    llm = ChatOpenAI(model="gpt-4o")
 
-#    breakpoint()
 
    llm_with_tools = llm.bind_tools(tools)
    return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])], "created_at": datetime.now()}
