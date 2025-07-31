@@ -68,7 +68,7 @@ class RequestHandler:
                         message_chunk_from_llm = chunk[2][0] #AIMessageChunk object -> https://python.langchain.com/api_reference/core/messages/langchain_core.messages.ai.AIMessageChunk.html
                         data_type = "AIMessageChunk"
                         base_message_as_dict = dumpd(chunk[2][0])["kwargs"]
-                        logger.info(f"🍅 {base_message_as_dict["content"]}")
+                        logger.info(f"🍅 {base_message_as_dict['content']}")
                         # # Only send if WebSocket is still open
                         if self._is_websocket_open(websocket):
                             await websocket.send_json({
