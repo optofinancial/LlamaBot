@@ -39,14 +39,14 @@ langchain-ollama==0.3.0
 langchain-openai==0.3.17
 langchain-text-splitters==0.3.9
 langgraph==0.6.0
-langgraph-api==0.2.110
+# langgraph-api==0.2.110  # REMOVED: deprecated, SDK now included in main langgraph package
 langgraph-checkpoint==2.1.1
 langgraph-checkpoint-postgres==2.0.23
 langgraph-cli==0.3.6
 langgraph-prebuilt==0.6.0
 langgraph-runtime-inmem==0.6.5
 langgraph-sdk==0.2.0
-langgraph-supervisor
+langgraph-supervisor==0.0.28
 langsmith==0.4.8
 markdown-it-py==3.0.0
 marshmallow==3.26.1
