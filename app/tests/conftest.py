@@ -9,7 +9,7 @@ from httpx import AsyncClient
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Disable LangSmith tracing completely for tests
-os.environ.pop("LANGCHAIN_TRACING_V2", None)
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
 os.environ.pop("LANGSMITH_ENDPOINT", None)
 os.environ.pop("LANGCHAIN_ENDPOINT", None)
 os.environ.pop("LANGSMITH_RUNS_ENDPOINTS", None)
@@ -22,6 +22,37 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from main import app, manager
 from langgraph.checkpoint.memory import MemorySaver
+
+
+@pytest.fixture(scope="session", autouse=True)
+def disable_langsmith_completely():
+    """Completely disable LangSmith tracing for the entire test session."""
+    # Store original values
+    original_env = {}
+    langsmith_vars = [
+        "LANGCHAIN_TRACING_V2",
+        "LANGCHAIN_API_KEY", 
+        "LANGSMITH_API_KEY",
+        "LANGSMITH_ENDPOINT",
+        "LANGCHAIN_ENDPOINT"
+    ]
+    
+    for var in langsmith_vars:
+        original_env[var] = os.environ.get(var)
+    
+    # Disable LangSmith
+    os.environ["LANGCHAIN_TRACING_V2"] = "false"
+    for var in langsmith_vars[1:]:  # Skip LANGCHAIN_TRACING_V2 since we want it false
+        os.environ.pop(var, None)
+    
+    yield
+    
+    # Restore original values (cleanup)
+    for var, value in original_env.items():
+        if value is not None:
+            os.environ[var] = value
+        else:
+            os.environ.pop(var, None)
 
 
 @pytest_asyncio.fixture
@@ -115,8 +146,11 @@ def mock_workflow():
 def setup_test_environment():
     """Set up test environment variables and mocks."""
     # Set test environment variables
-    os.environ["LANGSMITH_API_KEY"] = "test_api_key"
+    # Note: We don't set LANGSMITH_API_KEY to keep tracing disabled
     os.environ["OPENAI_API_KEY"] = "test_openai_key"
+    
+    # Ensure LangSmith tracing stays disabled
+    os.environ["LANGCHAIN_TRACING_V2"] = "false"
     
     # Mock the checkpointer to avoid database connections during tests
     with patch('main.get_or_create_checkpointer') as mock_checkpointer:

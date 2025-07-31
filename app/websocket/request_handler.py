@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 from typing import Any, Dict, TypedDict
+from datetime import datetime
 
 class RequestHandler:
     def __init__(self, app: FastAPI):
@@ -53,17 +54,32 @@ class RequestHandler:
                     "configurable": {
                         "thread_id": f"{message.get('thread_id')}"
                     }
-                } 
+                }
 
-                async for chunk in app.astream(state, config=config, stream_mode=["updates", "messages"]):
-                    is_this_chunk_an_llm_message = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'messages'
-                    is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 2 and chunk[0] == 'updates'
+                async for chunk in app.astream(state, config=config, stream_mode=["updates", "messages"], subgraphs=True):
+                    # NOTE: In LangGraph 0.5, they introduced this "subgraphs" parameter, that changes the datashape if you set it to True.
+                    # if subgraph=True, it returns a tuple with 3 elements, instead of 2 elements.
+                    # the first element is the subgraph name, the second element is the streaming data type ["updates", "messages", "values"], and the third element is the actual metadata.
+                    is_this_chunk_an_llm_message = isinstance(chunk, tuple) and len(chunk) == 3 and chunk[1] == 'messages'
+                    is_this_chunk_an_update_stream_type = isinstance(chunk, tuple) and len(chunk) == 3 and chunk[1] == 'updates'
+                    logger.info(f"🍅🍅🍅 Chunk: {chunk}")
                     if is_this_chunk_an_llm_message:
-                        message_chunk_from_llm = chunk[1][0] #AIMessageChunk object -> https://python.langchain.com/api_reference/core/messages/langchain_core.messages.ai.AIMessageChunk.html
-                    
+                        # breakpoint()
+                        message_chunk_from_llm = chunk[2][0] #AIMessageChunk object -> https://python.langchain.com/api_reference/core/messages/langchain_core.messages.ai.AIMessageChunk.html
+                        data_type = "AIMessageChunk"
+                        base_message_as_dict = dumpd(chunk[2][0])["kwargs"]
+                        logger.info(f"🍅 {base_message_as_dict["content"]}")
+                        # # Only send if WebSocket is still open
+                        if self._is_websocket_open(websocket):
+                            await websocket.send_json({
+                                "type": base_message_as_dict["type"],
+                                "content": base_message_as_dict["content"],
+                                "tool_calls": [],
+                                "base_message": base_message_as_dict
+                            })
                     
                     elif is_this_chunk_an_update_stream_type: # This means that LangGraph has given us a state update. This will often include a new message from the AI.
-                        state_object = chunk[1]
+                        state_object = chunk[2]
                         logger.info(f"🧠🧠🧠 LangGraph Output (State Update): {state_object}")
                     
                         # Handle dynamic agent key - look for messages in any nested dict
@@ -78,7 +94,7 @@ class RequestHandler:
                                 tool_calls = []
                                 
                                 if messages and len(messages) > 0:
-                                    message = messages[0]
+                                    message = messages[-1] # get the latest message (the last one in the list. Sometimes we have a human message and an AI message, so we want the AI message, depending on if we're using the create_react_agent tool or not)
                                     if hasattr(message, 'additional_kwargs') and message.additional_kwargs:
                                         tool_calls_data = message.additional_kwargs.get('tool_calls')
                                         if tool_calls_data:
@@ -105,12 +121,17 @@ class RequestHandler:
 
                                     # Only send if WebSocket is still open
                                     if self._is_websocket_open(websocket):
-                                        await websocket.send_json({
+
+                                        # NOTE: This JSON object is a standardized format that we've been using for all our front-ends.  
+                                        # Eventually, we might want to just rely on the base_message data shape as the source of truth for all front-ends.
+                                        llamapress_user_interface_json = {
                                             "type": message.type if hasattr(message, 'type') else "ai",
-                                            "content": messages_as_string[0] if messages_as_string else "",
+                                            "content": messages_as_string[-1] if messages_as_string else "",
                                             "tool_calls": tool_calls,
                                             "base_message": base_message_as_dict
-                                        })
+                                        }
+                                        
+                                        await websocket.send_json(llamapress_user_interface_json)
                                 break
                         
                         logger.info(f"LangGraph Output (State Update): {chunk}")
@@ -208,7 +229,7 @@ class RequestHandler:
                 app = self.get_app_from_workflow_string(langgraph_workflow)
                 
                 # Create messages from the message content
-                messages = [HumanMessage(content=message.get("message"))]
+                messages = [HumanMessage(content=message.get("message"), response_metadata={'created_at': datetime.now()})] 
                 
                 # Start with the transformed messages field
                 state = {"messages": messages}

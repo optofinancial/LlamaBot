@@ -1,6 +1,4 @@
 from langchain_openai import ChatOpenAI
-from langchain_ollama import ChatOllama
-
 from langchain_core.tools import tool
 from dotenv import load_dotenv
 from functools import partial
@@ -19,14 +17,24 @@ from langgraph.prebuilt import ToolNode, InjectedState
 import requests
 import json
 from typing import Annotated
-from datetime import datetime
 
 # Warning: Brittle - None type will break this when it's injected into the state for the tool call, and it silently fails. So if it doesn't map state types properly from the frontend, it will break. (must be exactly what's defined here).
-class LlamaBotState(MessagesState):
+class LlamaBotState(MessagesState): 
     api_token: str
-    agent_prompt: str
+    agent_prompt: Optional[str] = None
+    available_routes: Optional[str] = None
+    sent_from: Optional[str] = None
+    sent_to: Optional[str] = None
 
 @tool
+def send_text_message(message: str, state: Annotated[dict, InjectedState]) -> str:
+    """
+    Send an SMS text message to the user.
+    """
+    send_from = state.get("sent_to") #intentionally swap. We received their message from this number, so we need to send the response to this number.
+    send_to = state.get("sent_from") #same as above.
+    return rails_https_request("/messages", "POST", {"message": {"body": message, "sent_to": send_to, "sent_from": send_from}}, state)
+
 def rails_https_request(route: Optional[str], method: Optional[str], params: Optional[dict], state: Annotated[dict, InjectedState]) -> str:
     """
     Make an HTTP request to the Rails server with robust error handling.
@@ -250,7 +258,7 @@ def rails_https_request(route: Optional[str], method: Optional[str], params: Opt
 
 # Tools
 @tool
-def run_rails_console_command(rails_console_command: str, message_to_user: str, internal_thoughts: str, state: Annotated[LlamaBotState, InjectedState]) -> str:
+def run_rails_console_command(rails_console_command: str, message_to_user: str, internal_thoughts: str, state: Annotated[dict, InjectedState]) -> str:
     """
     Run a Rails console command.
     Message to user is a string to tell the user what you're doing.
@@ -320,114 +328,47 @@ def run_rails_console_command(rails_console_command: str, message_to_user: str, 
     except Exception as e:
         return f"Unexpected Error: {str(e)}"
 
-@tool #used as an example of a tool that doesn't require a state for testing Ollama Local Models
-def weather_in_city(city: str) -> str:
-    """
-    Get the weather in a city.
-    """
-    return f"The weather in {city} is sunny."
-
 # Global tools list
-tools = []
-# tools = [run_rails_console_command] #AGI mode.
-# tools = [weather_in_city]
+# tools = [run_rails_console_command]
+# tools = [rails_https_request]
 # tools = []
+tools = [send_text_message]
 
 # Node
-def llamabot(state: LlamaBotState):
+def public_leonardo(state: LlamaBotState):
    additional_instructions = state.get("agent_prompt")
-#    breakpoint()
 
    # System message
-   sys_msg = SystemMessage(content=f"""You are LlamaBot, a helpful AI assistant.
+   sys_msg = SystemMessage(content=f"""You are Leonardo, a helpful AI assistant.
                         In normal chat conversations, feel free to implement markdown formatting to make your responses more readable, if it's appropriate.
                         Here are additional instructions provided by the user: <USER_INSTRUCTIONS> {additional_instructions} </USER_INSTRUCTIONS> 
-                        You can do HTTP requests to the Rails server using the rails_https_request tool and the following routes: <RAILS_ROUTES> {state.get("available_routes")} </RAILS_ROUTES>""")
+                        """)
+                        # You can do HTTP requests to the Rails server using the rails_https_request tool and the following routes: <RAILS_ROUTES> {state.get("available_routes")} </RAILS_ROUTES>""")
 
-#    sys_msg = SystemMessage(content=f"""“Leonardo, Business Discovery v1.1”
-
-# You are **Leonardo, an Expert Conversion Strategist**, an AI consultant whose mission is to gather the
-# minimum—but complete—set of facts needed to design a high‑converting, quiz‑to‑form‑to‑chat
-# landing flow that drives NEW, profitable revenue for the client.
-
-# ## Interview Road‑Map (follow in order)
-
-# ### Stage 0 – High‑Level Business Snapshot  ← *your requested starting point*
-# Ask each item succinctly; do not proceed until answered.
-#   0.1 “My goal is to get you more customers. First, what’s your **business name**?”
-#   0.2 “What does your business actually **do / sell**?”
-#   0.3 “How long have you been in business?”
-#   0.4 “What’s your current **average monthly revenue** (a range is fine)?”
-#   0.5 “Do you mainly offer a **product, a service, or both**?”
-#   0.6 “What’s the **flagship product or service** and typical price point?”
-
-# ### Stage 1 – Core ‘Hair‑on‑Fire’ Problem
-# • “When prospects need you most, what urgent pain is ‘on fire’?”  
-# • Probe consequences of leaving it unsolved.
-
-# ### Stage 2 – Ideal Customer Profile (ICP)
-# • Firmographics/demographics, psychographics, budget, authority.  
-# • “Who is NOT a fit and why?”
-
-# ### Stage 3 – Hyper‑Specific Sub‑Problems
-# • List daily/weekly pain points.  
-# • Prioritise 2–4 by severity and ROI potential.
-
-# ### Stage 4 – Landing‑Flow Fuel
-# 1. Hooks & headlines that stop ICP scrolling.  
-# 2. 3‑5 quiz questions (multiple‑choice or sliders).  
-# 3. Minimum form fields needed before consult.  
-# 4. AI chat kick‑off prompt tied to quiz outcome.  
-# 5. Trust signals / objection handles.
-
-# ### Stage 5 – Confirmation
-# • Recap distilled insights.  
-# • Ask explicit approval: “Did I capture everything correctly?”
-
-# ## Behavioural Rules
-# • Keep a brisk pace; minimise fluff.  
-# • Push for concrete numbers/examples.  
-# • Translate jargon into plain English.  
-# • Politely interrupt rambling; refocus on current stage.  
-# • If the owner is unsure, offer common industry examples, then ask which is closest.
-
-# ## Final Output
-# After Stage 5, respond with:
-
-# 1. **Bulleted Brief** — HoF problem, ICP snapshot, sub‑problem shortlist, landing‑flow ideas.  
-# 2. **JSON object** with keys:  
-#    `businessName`, `whatItDoes`, `yearsInBusiness`, `monthlyRevenue`,  
-#    `flagshipOffer`, `pricePoint`,  
-#    `hairOnFireProblem`, `ICP`, `subProblems`,  
-#    `hooks`, `quizQuestions`, `formFields`, `chatKickoff`, `trustSignals`.
-
-# Do **NOT** generate landing‑page copy yet—only collect and structure raw ingredients.
-# """)
-
-#    llm = ChatOpenAI(model="o3-2025-04-16")
-   llm = ChatOpenAI(model="gpt-4o")
-
+   llm = ChatOpenAI(model="o4-mini")
+#    llm = ChatOpenAI(model="gpt-4.1")
+#    breakpoint()
 
    llm_with_tools = llm.bind_tools(tools)
-   return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])], "created_at": datetime.now()}
+   return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])]}
 
 def build_workflow(checkpointer=None):
     # Graph
     builder = StateGraph(LlamaBotState)
 
     # Define nodes: these do the work
-    builder.add_node("llamabot", llamabot)
+    builder.add_node("public_leonardo", public_leonardo)
     builder.add_node("tools", ToolNode(tools))
 
     # Define edges: these determine how the control flow moves
-    builder.add_edge(START, "llamabot")
+    builder.add_edge(START, "public_leonardo")
     builder.add_conditional_edges(
-        "llamabot",
+        "public_leonardo",
         # If the latest message (result) from llamabot is a tool call -> tools_condition routes to tools
         # If the latest message (result) from llamabot is a not a tool call -> tools_condition routes to END
         tools_condition,
     )
-    builder.add_edge("tools", "llamabot")
+    builder.add_edge("tools", "public_leonardo")
 
     react_graph = builder.compile(checkpointer=checkpointer)
 
