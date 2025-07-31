@@ -121,6 +121,3 @@ def build_workflow(checkpointer=None):
     supervisor_graph.add_edge("clone_agent", END)
 
     return supervisor_graph.compile(checkpointer=checkpointer)
-
-    # Compile and run
-    return html_agent
