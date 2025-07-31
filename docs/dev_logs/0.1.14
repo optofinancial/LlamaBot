@@ -20,3 +20,14 @@
 
 07/31/2025: 
 - Patch requirements.txt that included a reference no longer needed (was breaking in production)
+
+- fix!: drop Python 3.9-3.10 support, remove deprecated langgraph-api
+
+BREAKING CHANGE: Python 3.11+ now required due to LangGraph dependencies
+
+- Remove deprecated langgraph-api==0.2.110 (merged into main package) 
+- Remove circular self-dependency line
+- Update pyproject.toml to require Python >=3.11
+- Keep langgraph-runtime-inmem (works fine with Python 3.11+)
+
+Fixes installation failures on deployment.
