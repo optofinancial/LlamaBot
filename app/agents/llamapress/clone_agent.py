@@ -12,12 +12,14 @@ from datetime import datetime
 import httpx
 import asyncio
 import json
+import base64
+import aiohttp
 
 from app.agents.utils.playwright_screenshot import capture_page_and_img_src
 from app.agents.utils.images import encode_image
 
 
-from .helpers import reassemble_fragments
+from app.agents.llamapress.helpers import reassemble_fragments
 
 load_dotenv()
 
@@ -116,7 +118,7 @@ def get_screenshot_and_html_content_using_playwright(url: str, state: Annotated[
     Get the screenshot and HTML content of a webpage using Playwright. Then, generate the HTML as a clone, and save it to the file system. 
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    image_path = f"tmp/url-screenshot-{timestamp}.png"  
+    image_path = f"tmp/url-screenshot-{timestamp}.png"
     trimmed_html_content, image_sources = asyncio.run(capture_page_and_img_src(url, image_path))
     
     if not trimmed_html_content:
@@ -125,10 +127,6 @@ def get_screenshot_and_html_content_using_playwright(url: str, state: Annotated[
     # This returns a ToolMessage
     # From here, we're going to return back to the url_clone_agent node, and then we'll force the model to call the write_html_page tool.
     return {'tool_name': 'get_screenshot_and_html_content_using_playwright', 'tool_args': {'url': url, 'image_path': image_path}, 'tool_data': {'trimmed_html_content': trimmed_html_content}}
-
-# Global tools list
-url_clone_tools = [get_screenshot_and_html_content_using_playwright, write_html_page]
-image_clone_tools = []
 
 # Node
 def url_clone_agent(state: MessagesState):
@@ -143,7 +141,6 @@ def url_clone_agent(state: MessagesState):
             
             print(f"Making our call to o3 vision right now")
     
-            breakpoint()
             response = llm_forced_tool_call.invoke([
                 SystemMessage(content="""
                     ### SYSTEM
@@ -204,40 +201,148 @@ def url_clone_agent(state: MessagesState):
             ])
 
             return {"messages": [response]}
-        
         else:
             return {}
-   
-   # In the default case force it to call the get_screenshot_and_html_content_using_playwright tool
-   # System message
-   sys_msg = SystemMessage(content="You are an agent that can 'deep clone' by using playwright to navigate to a URL, take a screenshot of the page, look at the HTML structure, and clone the HTML page out. You have access to the tool `get_screenshot_and_html_content_using_playwright` to do this. If the user requests a deep clone, you should use this tool.")
-   llm = ChatOpenAI(model="o4-mini")
-   llm_with_tools = llm.bind_tools(url_clone_tools, tool_choice="get_screenshot_and_html_content_using_playwright")
-   return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])]}
+   else:
+        # In the default case force it to call the get_screenshot_and_html_content_using_playwright tool
+        # System message
+        sys_msg = SystemMessage(content="You are an agent that can 'deep clone' by using playwright to navigate to a URL, take a screenshot of the page, look at the HTML structure, and clone the HTML page out. You have access to the tool `get_screenshot_and_html_content_using_playwright` to do this. If the user requests a deep clone, you should use this tool.")
+        llm = ChatOpenAI(model="o4-mini")
+        llm_with_tools = llm.bind_tools(url_clone_tools, tool_choice="get_screenshot_and_html_content_using_playwright")
+        return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])]}
+
+@tool
+def clone_image_tool(image_url: str, state: Annotated[dict, InjectedState]):
+    """
+    Tool to clone an image from a given URL.
+    """
+    return {"tool_name": "clone_image_tool", "tool_args": {"image_url": image_url}}
+
 
 # Node
-def router_node(state: LlamaPressState):
+def router_node(state: LlamaPressState): 
+    #NOTE: We are mechanically routing here for now so we can get to parity with our current product (so we can launch our product on OSS LlamaBot), but eventually the LLM will be able to decide which tool to call.
     last_message = state.get("messages")[-1]
-    # if "deep clone" in last_message.content.lower():
-    return {"next": "url_clone_agent"}
-    # elif "clone" in last_message.content.lower():
-    #     return {"next": "image_clone_agent"}
-    # else:
-    #     return {"next": "html_agent"}
+    if "deep clone" in last_message.content.lower():
+        return {"next": "url_clone_agent"}
+    elif "clone" in last_message.content.lower():
+        return {"next": "image_clone_agent"}
+    else: #TODO: What shuould we do here..? Route back to html_node that's in a different subgraph?
+        return {"next": "END"}
 
 # Node
-def image_clone_agent(state: LlamaPressState):
+async def image_clone_agent(state: LlamaPressState):
+    last_message = state.get("messages")[-1]
+    
+    if type(last_message) == ToolMessage:
+        data = json.loads(last_message.content)
+        if data.get("tool_name") == "clone_image_tool":
+            image_url = data.get("tool_args").get("image_url")
+
+            # Get the S3 URL from the message
+            logging.info("CLONE - Extract URL")
+
+            # Download image from S3 URL
+            async with aiohttp.ClientSession() as session:
+                async with session.get(image_url) as response:
+                    if response.status != 200:
+                        raise ValueError(f"Failed to download image from S3: {response.status}")
+                    
+                    # Try to get image type from Content-Type header
+                    content_type = response.headers.get('Content-Type', '')
+                    image_format = content_type.split('/')[-1] if 'image' in content_type else None
+                    
+                    # If we couldn't get it from headers, try to detect from file magic numbers
+                    if not image_format:
+                        image_data = await response.read()
+                        # Check magic numbers for common image formats
+                        if image_data.startswith(b'\x89PNG\r\n\x1a\n'):
+                            image_format = 'png'
+                        elif image_data.startswith(b'\xff\xd8\xff'):
+                            image_format = 'jpeg'
+                        elif image_data.startswith(b'GIF87a') or image_data.startswith(b'GIF89a'):
+                            image_format = 'gif'
+                        elif image_data.startswith(b'RIFF') and image_data[8:12] == b'WEBP':
+                            image_format = 'webp'
+                        else:
+                            image_format = 'png'  # fallback to png if we can't detect
+                        
+                        base64_image = base64.b64encode(image_data).decode('utf-8')
+                    else:
+                        # If we got format from headers, read the data after
+                        image_data = await response.read()
+                        base64_image = base64.b64encode(image_data).decode('utf-8')
+
+            # base64_image = encode_image(image_data)
+            llm_forced_tool_call = ChatOpenAI(model="gpt-4o").bind_tools([write_html_page], tool_choice="write_html_page")
+            
+            print(f"Making our call to o3 vision right now")
+    
+            response = llm_forced_tool_call.invoke([
+                SystemMessage(content="""
+                    ### SYSTEM
+        You are "Pixel-Perfect Front-End", a senior web-platform engineer who specialises in
+        * taking an image and cloning it into a Vanilla HTML/Tailwind CSS/JavaScript document
+        * matching the *visual* layout of the reference image to within ±2 px for all major breakpoints
+
+        When you reply you MUST:
+        1. **Think step-by-step silently** ("internal reasoning"), then **output nothing but the final HTML inside a single fenced code block**.
+        2. **Inline zero commentary** – the code block is the entire answer.
+        3. Use **only system fonts** (font-stack: `Roboto, Arial, Helvetica, sans-serif`) and a single `<style>` block in the `<head>`.
+        4. Avoid JavaScript unless explicitly asked; replicate all interactions with pure HTML/CSS where feasible.
+
+        ### USER CONTEXT
+        You will receive a screenshot of the image.
+
+        ### TASK
+        1. **Infer the essential visual / UX structure** of the image from SCREENSHOT.
+        2. Re-create the image as a **single HTML document** following best practices described above.
+
+        3. You are using the `write_html_page` function/tool, and are generating a brand new vanilla HTML/Tailwind CSS/JavaScript code, include comments that explain what you're doing for each logical block of code you're about to generate."
+                    "For every logical block you generate (HTML section, CSS rule set, JS function):"
+                    "1. Precede it with exactly **one** comment line that starts with 'CODE_EXPLANATION: <code_explanation> writing a section that ... </code_explanation>'"
+                    "2. Keep the code_explanation ≤ 15 words."
+                    "3. Never include other text on that line."
+                    "4. Examples of how to do this:"
+                        "EXAMPLE_HTML_COMMENT <!-- <code_explanation>Adding a section about the weather</code_explanation> -->"
+                        "EXAMPLE_TAILWIND_CSS_COMMENT /* <code_explanation>Setting the page background color to blue with Tailwind CSS</code_explanation> */"
+                        "EXAMPLE_JAVASCRIPT_COMMENT // <code_explanation>Making the weather section interactive and animated with JavaScript  </code_explanation>"
+                    "5. You are able to write the new HTML and Tailwind snippet of code to the filesystem, if the user asks you to."
+                        "Any HTML pages generated MUST include tailwind CDN and viewport meta helper tags in the header: "
+                        "<EXAMPLE> <head data-llama-editable='true' data-llama-id='0'>"
+                        "<meta content='width=device-width, initial-scale=1.0' name='viewport'>"
+                        "<script src='https://cdn.tailwindcss.com'></script> </EXAMPLE>"
+
+        ### OUTPUT FORMAT
+        Return one fenced code block starting with <!DOCTYPE html> and ending with </html>
+        No extra markdown, no explanations, no leading or trailing whitespace outside the code block.
+                """),
+                HumanMessage(content=[
+                    {"type": "text", "text": "Please use our write_html_page tool to clone this image based on the image provided."},
+                    {"type": "image_url", "image_url": {"url": f"data:image/{image_format};base64,{base64_image}"}}
+                ])
+            ])
+
+            return {"messages": [response]}
+        else:
+            return {"messages": [last_message]}
+
     # instructions = state.get("agent_prompt", "")
     system_content = (
-        f"Simply respond with, I am the image clone agent!"
+        f"You are to clone an image, and return the HTML code for the cloned image. Here is the user's message: {state.get('messages')[-1].content}"
     )
 
-    model = ChatOpenAI(model="gpt-4.1-2025-04-14")
-    llm_with_tools = model.bind_tools(image_clone_tools)
+    ##TODO: We need to do a tool call to get the URL, and then pull down the data from the URL, and then pass that into the LLM to clone the image.
+    model = ChatOpenAI(model="gpt-4o")
+    llm_with_tools = model.bind_tools(image_clone_tools, tool_choice="clone_image_tool") # force the LLM to call the clone_image_tool to get the URL.
     llm_response_message = llm_with_tools.invoke([SystemMessage(content=system_content)] + state["messages"])
     llm_response_message.response_metadata["created_at"] = str(datetime.now())
 
     return {"messages": [llm_response_message]}
+
+# Global tools list
+url_clone_tools = [get_screenshot_and_html_content_using_playwright, write_html_page]
+image_clone_tools = [clone_image_tool, write_html_page]
 
 def build_workflow(checkpointer=None):
     # Graph
@@ -247,9 +352,9 @@ def build_workflow(checkpointer=None):
     builder.add_node("router", router_node)
     builder.add_node("url_clone_agent", url_clone_agent)
     builder.add_node("image_clone_agent", image_clone_agent)
+    # builder.add_node("html_agent", image_clone_agent)
     builder.add_node("url_clone_tools", ToolNode(url_clone_tools))
-    # builder.add_node("url_clone_tools", ToolNode(url_clone_tools))
-    # builder.add_node("image_clone_tools", ToolNode(image_clone_tools))
+    builder.add_node("image_clone_tools", ToolNode(image_clone_tools)) #... why does adding this node break the workflow?
 
     # Define edges: these determine how the control flow moves
     builder.add_edge(START, "router")
@@ -269,19 +374,19 @@ def build_workflow(checkpointer=None):
         # If the latest message (result) from url_clone_agent is a tool call -> route to url_clone_tools
         # If the latest message (result) from url_clone_agent is not a tool call -> route to END
         tools_condition,
-        {"tools": "url_clone_tools"}
+        {"tools": "url_clone_tools", "__end__": END}
     )
 
-    # builder.add_conditional_edges(
-    #     "image_clone_agent",
-    #     # If the latest message (result) from image_clone_agent is a tool call -> route to image_clone_tools
-    #     # If the latest message (result) from image_clone_agent is not a tool call -> route to END
-    #     tools_condition,
-    #     {"tools": "image_clone_tools"} #we have to map this since we're not using the default tools_condition
-    # )
+    builder.add_conditional_edges(
+        "image_clone_agent",
+        # If the latest message (result) from image_clone_agent is a tool call -> route to image_clone_tools
+        # If the latest message (result) from image_clone_agent is not a tool call -> route to END
+        tools_condition,
+        {"tools": "image_clone_tools", "__end__": END} #we have to map this since we're not using the default tools_condition
+    )
 
     builder.add_edge("url_clone_tools", "url_clone_agent")
-    # builder.add_edge("image_clone_tools", "image_clone_agent")
+    builder.add_edge("image_clone_tools", "image_clone_agent")
 
     builder.add_edge("url_clone_agent", END)
     builder.add_edge("image_clone_agent", END)
@@ -289,3 +394,15 @@ def build_workflow(checkpointer=None):
     clone_agent = builder.compile(checkpointer=checkpointer, name="clone_agent")
 
     return clone_agent
+
+if __name__ == "__main__":
+    clone_agent = build_workflow()
+    
+    # Save the graph as a PNG file
+    with open("clone_agent_graph.png", "wb") as f:
+        f.write(clone_agent.get_graph().draw_mermaid_png())
+    print("Graph saved to clone_agent_graph.png")
+    
+    # Also print the Mermaid text for debugging
+    print("\nMermaid diagram code:")
+    print(clone_agent.get_graph().draw_mermaid())
