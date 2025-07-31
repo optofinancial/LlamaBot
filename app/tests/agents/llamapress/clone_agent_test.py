@@ -59,8 +59,9 @@ def test_clone_routing():
     # Verify it routes to image_clone_agent
     assert result["next"] == "image_clone_agent"
 
+@pytest.mark.asyncio
 @patch('app.agents.llamapress.clone_agent.ChatOpenAI')
-def test_clone_workflow(mock_chat_openai):
+async def test_clone_workflow(mock_chat_openai):
     """Test that a message containing 'clone' (but not 'deep clone') routes through the image_clone_agent path."""
     # Mock the LLM response for image_clone_agent with proper AIMessage (no tool calls)
     mock_llm_instance = MagicMock()
@@ -90,8 +91,8 @@ def test_clone_workflow(mock_chat_openai):
         "created_at": datetime.now()
     }
     
-    # Run the workflow
-    result = workflow.invoke(initial_state)
+    # Run the workflow using async API
+    result = await workflow.ainvoke(initial_state)
     
     # Verify the workflow completed successfully
     assert result is not None

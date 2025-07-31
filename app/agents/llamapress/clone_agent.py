@@ -113,13 +113,13 @@ async def write_html_page(
         return f"Unexpected Error: {str(e)}"
 
 @tool
-def get_screenshot_and_html_content_using_playwright(url: str, state: Annotated[dict, InjectedState]) -> tuple[str, list[str]]:
+async def get_screenshot_and_html_content_using_playwright(url: str, state: Annotated[dict, InjectedState]) -> tuple[str, list[str]]:
     """
     Get the screenshot and HTML content of a webpage using Playwright. Then, generate the HTML as a clone, and save it to the file system. 
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     image_path = f"tmp/url-screenshot-{timestamp}.png"
-    trimmed_html_content, image_sources = asyncio.run(capture_page_and_img_src(url, image_path))
+    trimmed_html_content, image_sources = await capture_page_and_img_src(url, image_path)
     
     if not trimmed_html_content:
         return "Screenshot functionality is not available. Please install Playwright to enable this feature."
