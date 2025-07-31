@@ -17,3 +17,6 @@
 - Refactor: LlamaPress into supervisor agent, and add html_agent and clone sub-agents
 - Feat: Add url clone and image clone sub-agents
 - Add private agent folder 
+
+07/31/2025: 
+- Patch requirements.txt that included a reference no longer needed (was breaking in production)
