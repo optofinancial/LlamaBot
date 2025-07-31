@@ -29,9 +29,9 @@ import json
 from datetime import datetime
 from app.agents.react_agent.nodes import build_workflow
 from app.agents.llamabot_v1.nodes import build_workflow as build_workflow_llamabot_v1
-from websocket.web_socket_connection_manager import WebSocketConnectionManager
-from websocket.web_socket_handler import WebSocketHandler
-from websocket.request_handler import RequestHandler
+from app.websocket.web_socket_connection_manager import WebSocketConnectionManager
+from app.websocket.web_socket_handler import WebSocketHandler
+from app.websocket.request_handler import RequestHandler
 from collections import defaultdict
 
 # Configure logging

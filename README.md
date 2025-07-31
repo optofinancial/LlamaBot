@@ -126,6 +126,7 @@ git clone https://github.com/KodyKendall/LlamaBot.git
 cd LlamaBot/backend
 python -m venv venv && source venv/bin/activate
 pip install -r ../requirements.txt
+pip install -e .
 uvicorn main:app --reload
 ```
 

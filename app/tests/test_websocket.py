@@ -7,11 +7,11 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from fastapi import WebSocketDisconnect
 from starlette.websockets import WebSocketState
-from websockets.exceptions import ConnectionClosed
+from app.websockets.exceptions import ConnectionClosed
 
-from websocket.web_socket_connection_manager import WebSocketConnectionManager
-from websocket.web_socket_handler import WebSocketHandler
-from websocket.web_socket_request_context import WebSocketRequestContext
+from app.websocket.web_socket_connection_manager import WebSocketConnectionManager
+from app.websocket.web_socket_handler import WebSocketHandler
+from app.websocket.web_socket_request_context import WebSocketRequestContext
 
 
 class TestWebSocketConnectionManager:

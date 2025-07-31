@@ -3,7 +3,7 @@ from asyncio import Lock, CancelledError
 from fastapi import FastAPI, WebSocket
 from starlette.websockets import WebSocketState
 
-from websocket.web_socket_request_context import WebSocketRequestContext
+from app.websocket.web_socket_request_context import WebSocketRequestContext
 from typing import Dict, Optional
 
 from langchain_core.messages import HumanMessage

@@ -9,8 +9,8 @@ import json
 
 from pydantic import BaseModel
 
-from websocket.web_socket_connection_manager import WebSocketConnectionManager
-from websocket.request_handler import RequestHandler
+from app.websocket.web_socket_connection_manager import WebSocketConnectionManager
+from app.websocket.request_handler import RequestHandler
 
 logger = logging.getLogger(__name__)
 
