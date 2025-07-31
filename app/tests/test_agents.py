@@ -6,9 +6,9 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 import requests
 
-from agents.base_agent import BaseAgent
-from agents.llamabot_v1.nodes import run_rails_console_command, LlamaBotState
-from agents.llamapress.clone_agent import write_html_page, LlamaPressState
+from app.agents.base_agent import BaseAgent
+from app.agents.llamabot_v1.nodes import run_rails_console_command, LlamaBotState
+from app.agents.llamapress.clone_agent import write_html_page, LlamaPressState
 from langgraph.checkpoint.memory import MemorySaver
 
 
@@ -358,7 +358,7 @@ class TestLlamaPressNodes:
         assert "page_id is required" in result
 
     @pytest.mark.asyncio
-    @patch('agents.llamapress.clone_agent.logger')
+    @patch('app.agents.llamapress.clone_agent.logger')
     async def test_write_html_page_logging(self, mock_logger):
         """Test that logging is properly implemented."""
         # Create test state with all required fields
@@ -373,7 +373,7 @@ class TestLlamaPressNodes:
         }
 
         # Mock the environment variable to avoid actual HTTP calls
-        with patch('agents.llamapress.clone_agent.os.getenv', return_value=None):
+        with patch('app.agents.llamapress.clone_agent.os.getenv', return_value=None):
             # Execute function using async tool invoke
             result = await write_html_page.ainvoke({
                 'full_html_document': '<html><body>Test</body></html>',
@@ -393,12 +393,12 @@ class TestWorkflowBuilding:
         checkpointer = MemorySaver()
         
         # Import and patch the actual build_workflow function
-        with patch('agents.react_agent.nodes.build_workflow') as mock_build:
+        with patch('app.agents.react_agent.nodes.build_workflow') as mock_build:
             mock_workflow = MagicMock()
             mock_build.return_value = mock_workflow
             
             # Import and call the function
-            from agents.react_agent.nodes import build_workflow
+            from app.agents.react_agent.nodes import build_workflow
             workflow = build_workflow(checkpointer=checkpointer)
             
             mock_build.assert_called_once_with(checkpointer=checkpointer)
@@ -556,10 +556,10 @@ class TestAgentErrorHandling:
         mock_checkpointer = MagicMock()
         mock_checkpointer.setup.side_effect = Exception("Invalid checkpointer")
         
-        with patch('agents.react_agent.nodes.build_workflow') as mock_build:
+        with patch('app.agents.react_agent.nodes.build_workflow') as mock_build:
             mock_build.side_effect = Exception("Invalid checkpointer configuration")
             
-            from agents.react_agent.nodes import build_workflow
+            from app.agents.react_agent.nodes import build_workflow
             
             with pytest.raises(Exception):
                 build_workflow(checkpointer=mock_checkpointer)

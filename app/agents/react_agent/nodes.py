@@ -12,10 +12,10 @@ from langgraph.prebuilt import ToolNode
 
 import asyncio
 
-from agents.utils.playwright_screenshot import capture_page_and_img_src
+from app.agents.utils.playwright_screenshot import capture_page_and_img_src
 
 from openai import OpenAI
-from agents.utils.images import encode_image
+from app.agents.utils.images import encode_image
 
 @tool
 def write_html(html_code: str) -> str:
