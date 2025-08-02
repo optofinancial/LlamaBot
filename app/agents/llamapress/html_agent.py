@@ -125,7 +125,8 @@ async def overwrite_html_snippet(new_html_code: str, state: LlamaPressState) -> 
     )
     api_token = state.get("api_token")
     LLAMAPRESS_API_URL = os.getenv("LLAMAPRESS_API_URL")
-    POST_API_ENDPOINT = f"{LLAMAPRESS_API_URL}/pages/{state.get("page_id")}.json"
+    logger.info(f"LLAMAPRESS_API_URL: {LLAMAPRESS_API_URL}")
+    POST_API_ENDPOINT = f"{LLAMAPRESS_API_URL}/pages/{state.get('page_id')}.json"
 
     async with httpx.AsyncClient() as client:
         response = await client.put(

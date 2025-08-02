@@ -13,6 +13,8 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langchain_core.load import dumpd
 from psycopg_pool import AsyncConnectionPool
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 import json
 import importlib
@@ -201,24 +203,52 @@ class RequestHandler:
         if ws_id in self.locks:
             del self.locks[ws_id]
 
-    def get_workflow_from_langgraph_json(self, message: dict):
-        # Try different paths for langgraph.json
-        possible_paths = ["../langgraph.json", "../../langgraph.json", "langgraph.json"]
-        langgraph_json = None
-        
-        for path in possible_paths:
-            try:
-                with open(path, 'r') as f:
-                    langgraph_json = json.load(f)
-                    break
-            except FileNotFoundError:
-                continue
-        
-        if langgraph_json is None:
-            raise FileNotFoundError("Could not find the agent from the langgraph.json file")
-        
-        langgraph_workflow = langgraph_json.get("graphs").get(message.get("agent_name"))
-        return langgraph_workflow
+
+    def get_workflow_from_langgraph_json(self, message: dict) -> str | None:
+        """
+        Return the workflow path (e.g. "./agents/llamapress/nodes.py:build_workflow")
+        for `message["agent_name"]`.  Raises FileNotFoundError if the JSON itself
+        can’t be located; raises KeyError if the agent isn’t present in the JSON.
+        """
+
+        agent_name = message.get("agent_name")
+        if not agent_name:
+            raise KeyError("agent_name missing from message")
+
+        # 1️⃣  explicit override (useful in containers / CI)
+        explicit = os.getenv("LANGGRAPH_CONFIG")
+        if explicit:
+            cfg_path = Path(explicit).expanduser()
+            if not cfg_path.is_file():
+                raise FileNotFoundError(f"LANGGRAPH_CONFIG='{cfg_path}' not found")
+            return self._load_workflow(cfg_path, agent_name)
+
+        # 2️⃣  walk up the tree from the directory that contains *this* file
+        here = Path(__file__).resolve().parent
+        for parent in [here, *here.parents]:
+            candidate = parent / "langgraph.json"
+            if candidate.is_file():
+                return self._load_workflow(candidate, agent_name)
+
+        # 3️⃣  legacy relative fallbacks (same semantics you had)
+        legacy_paths = ["../langgraph.json", "../../langgraph.json", "langgraph.json"]
+        for rel in legacy_paths:
+            candidate = Path(rel).resolve()
+            if candidate.is_file():
+                return self._load_workflow(candidate, agent_name)
+
+        raise FileNotFoundError("langgraph.json not found in any expected location")
+
+
+    def _load_workflow(self, cfg_path: Path, agent_name: str) -> str:
+        """Load JSON at cfg_path and return the graph definition for agent_name."""
+        with cfg_path.open("r") as f:
+            data = json.load(f)
+
+        graphs = data.get("graphs", {})
+        if agent_name not in graphs:
+            raise KeyError(f"Agent '{agent_name}' not found in {cfg_path}")
+        return graphs[agent_name]
     
     def get_langgraph_app_and_state(self, message: dict):
         app = None
