@@ -17,6 +17,15 @@
 
 ---
 
+Yesuto: 
+To run this project, make sure you are in the "app" directory, and run: 
+```
+cd llamabot
+source venv/bin/activate
+PYTHONPATH=.. uvicorn main:app --reload
+```
+
+
 ## ✨ What is LlamaBot?
 
 LlamaBot is an open-source AI agent built on **LangGraph** and **FastAPI**. It helps you:

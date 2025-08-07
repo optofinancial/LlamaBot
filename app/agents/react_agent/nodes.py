@@ -16,106 +16,66 @@ from app.agents.utils.playwright_screenshot import capture_page_and_img_src
 
 from openai import OpenAI
 from app.agents.utils.images import encode_image
+import os
 
 @tool
-def write_html(html_code: str) -> str:
+def get_user_goals(user_id: str) -> str:
     """
-    Write HTML code to a file.
+    Get the user's goals.
     """
-    with open("/Users/kodykendall/SoftEngineering/LLMPress/Simple/LlamaBotSimple/page.html", "w") as f:
-        f.write(html_code)
-    return "HTML code written to page.html"
+    #TODO: Get the user's goals from the database.
+    #TODO: Return the results as a string.
+    return "user goals"
+
+    #TODO: Connect to the database using the DB_URI in the .env file.
+    #TODO: Execute the SQL query and return the results.
+    #TODO: Return the results as a string.
 
 @tool
-def write_css(css_code: str) -> str:
+def write_sql_query(sql_query: str) -> str:
     """
-    Write CSS code to a file.
+    Write a SQL query to a file.
     """
-    with open("/Users/kodykendall/SoftEngineering/LLMPress/Simple/LlamaBotSimple/assets/page.css", "w") as f:
-        f.write(css_code)
-    return "CSS code written to page.css"
+    #TODO: Connect to the database using the DB_URI in the .env file.
+    #TODO: Execute the SQL query and return the results.
+    #TODO: Return the results as a string.
+    # use psycopg to connect to the database and execute the query, then return the results as a string.
 
-@tool
-def write_javascript(javascript_code: str) -> str:
-    """
-    Write JavaScript code to a file.
-    """
-    with open("/Users/kodykendall/SoftEngineering/LLMPress/Simple/LlamaBotSimple/assets/page.js", "w") as f:
-        f.write(javascript_code)
-    return "JavaScript code written to page.js"
+    DB_URI = os.getenv("DB_URI")
+    import psycopg
+    conn = psycopg.connect(DB_URI)
+    cursor = conn.cursor()
+    cursor.execute(sql_query)
+    results = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    # breakpoint()
 
-
-@tool
-def get_screenshot_and_html_content_using_playwright(url: str) -> tuple[str, list[str]]:
-    """
-    Get the screenshot and HTML content of a webpage using Playwright. Then, generate the HTML as a clone, and save it to the file system. 
-    """
-    trimmed_html_content, image_sources = asyncio.run(capture_page_and_img_src(url, "assets/screenshot-of-page-to-clone.png"))
-    
-    if not trimmed_html_content:
-        return "Screenshot functionality is not available. Please install Playwright to enable this feature."
-
-    llm = ChatOpenAI(model="o3")
-
-    # Getting the Base64 string
-    base64_image = encode_image("assets/screenshot-of-page-to-clone.png")
-
-    print(f"Making our call to o3 vision right now")
-    
-    response = llm.invoke([
-        SystemMessage(content="""
-            ### SYSTEM
-You are "Pixel-Perfect Front-End", a senior web-platform engineer who specialises in
- * redesigning bloated, auto-generated pages into clean, semantic, WCAG-conformant HTML/CSS
- * matching the *visual* layout of the reference screenshot to within ±2 px for all major breakpoints
-
-When you reply you MUST:
-1. **Think step-by-step silently** ("internal reasoning"), then **output nothing but the final HTML inside a single fenced code block**.
-2. **Inline zero commentary** – the code block is the entire answer.
-3. Use **only system fonts** (font-stack: `Roboto, Arial, Helvetica, sans-serif`) and a single `<style>` block in the `<head>`.
-4. Avoid JavaScript unless explicitly asked; replicate all interactions with pure HTML/CSS where feasible.
-5. Preserve all outbound links exactly as provided in the RAW_HTML input.
-7. Ensure the layout is mobile-first responsive (Flexbox/Grid) and maintains the same visual hierarchy:  
-   e.g) **header ➔ main (logo, search box, buttons, promo) ➔ footer**.
-
-### USER CONTEXT
-You will receive two payloads:
-
-**SCREENSHOT** – a screenshot of the webpage.  
-**RAW_HTML** – the stripped, uglified DOM dump (may include redundant tags, hidden dialogs, etc.).
-
-### TASK
-1. **Infer the essential visual / UX structure** of the page from SCREENSHOT.  
-2. **Cross-reference** with RAW_HTML only to copy:
-   * anchor `href`s & visible anchor text
-   * any aria-labels, alt text, or titles that improve accessibility.
-3. **Discard** every element not visible in the screenshot (menus, dialogs, split-tests, inline JS blobs).
-4. Re-create the page as a **single HTML document** following best practices described above.
-
-### OUTPUT FORMAT
-Return one fenced code block starting with <!DOCTYPE html> and ending with </html>
-No extra markdown, no explanations, no leading or trailing whitespace outside the code block.
-             
-             Here is the trimmed down HTML:
-             {trimmed_html_content}
-        """),
-        HumanMessage(content=f"Here is the trimmed down HTML: {trimmed_html_content}"),
-        HumanMessage(content=[
-            {"type": "text", "text": "Please clone this webpage based on the screenshot and HTML content provided."},
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-        ])
-    ])
-
-    with open("/Users/kodykendall/SoftEngineering/LLMPress/Simple/LlamaBotSimple/page.html", "w") as f:
-        f.write(response.content)
-    
-    return "Cloned webpage written to file"
+    return f"query: {sql_query}\nresults: {results}"
 
 # Global tools list
-tools = [write_html, write_css, write_javascript, get_screenshot_and_html_content_using_playwright]
+tools = [write_sql_query]
 
 # System message
-sys_msg = SystemMessage(content="You are a helpful software_developer_assistant tasked with writing HTML, CSS, and JavaScript code to files. HTML is always written first, then CSS, then JavaScript. CSS will be written to assets/page.css and JavaScript will be written to assets/page.js, reference them accordingly in your generated code. If you are cloning a webpage, you will just write the final output directly into the single HTML page including the CSS and JavaScript in that single file.")
+sys_msg = SystemMessage(content="""
+You are opto, a helpful assistnat that is able to write SQL queries to access Transaction data and other 
+financial account information from the user. Here is the stucture of their database:
+
+the table name is transactions.
+
+interface transaction {
+  id: string;
+  amount: number;
+  description: string;
+  category: string;
+  category_tag: string;
+  date: string;
+  merchant_name?: string;
+  type: string;
+  account_id: string;
+  pending: boolean;
+  income_flag: boolean;
+}""")
 
 # Node
 def software_developer_assistant(state: MessagesState):
@@ -123,6 +83,8 @@ def software_developer_assistant(state: MessagesState):
    llm_with_tools = llm.bind_tools(tools)
    return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])]}
 
+
+# //TODO: This is where you'll implement opto logic
 def build_workflow(checkpointer=None):
     # Graph
     builder = StateGraph(MessagesState)
