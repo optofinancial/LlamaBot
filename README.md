@@ -25,6 +25,12 @@ source venv/bin/activate
 PYTHONPATH=.. uvicorn main:app --reload
 ```
 
+Then open:
+
+```
+http://localhost:8000/chat
+```
+
 
 ## ✨ What is LlamaBot?
 
